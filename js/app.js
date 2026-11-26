@@ -4759,6 +4759,8 @@
       render();
       persist(false);
       syncWatchToIdb();
+      /* 1.99.8 : photos de la fiche effacées en ligne tout de suite (avant : au prochain passage de nettoyage, parfois manqué) */
+      if (phSyncOn()) purgePhotos().then(function () { return phCloudDelGone(); }).catch(function () {});
     });
   });
 
@@ -5004,6 +5006,9 @@
     }
     var mb = $("btn-abo-menu");
     if (mb) mb.hidden = !(essaiActive() && state.trial.bill && !essaiPaid());
+    /* abonné : gérer / résilier en libre-service (portail Stripe, depuis vydel.fr/resilier.html) */
+    var mg = $("btn-abo-gerer");
+    if (mg) mg.hidden = !(essaiActive() && essaiPaid());
   }
   function openAbo() {
     if (!essaiActive()) { toast("Abonnement indisponible pour ce cabinet."); return; }
@@ -12216,6 +12221,8 @@
   });
   if ($("btn-essai-banner-sub")) $("btn-essai-banner-sub").addEventListener("click", openAbo);
   if ($("btn-abo-menu")) $("btn-abo-menu").addEventListener("click", openAbo);
+  var RESILIER_URL = "https://vydel.fr/resilier.html";
+  if ($("btn-abo-gerer")) $("btn-abo-gerer").addEventListener("click", function () { window.open(RESILIER_URL, "_blank", "noopener"); });
   if ($("btn-essai-fin-sub")) $("btn-essai-fin-sub").addEventListener("click", openAbo);
   if ($("btn-abo-go")) $("btn-abo-go").addEventListener("click", aboCheckout);
   if ($("btn-abo-back")) $("btn-abo-back").addEventListener("click", function () { $("modal-abo").hidden = true; });

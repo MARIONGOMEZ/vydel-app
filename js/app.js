@@ -21,8 +21,8 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.7-app";
-  var CGU_VER = "9"; /* 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
+  var APP_VER = "1.99.8-app";
+  var CGU_VER = "10"; /* 10 : « Essai gratuit et abonnement » (1.99.8, à relire) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
   var meta = null;
@@ -130,16 +130,31 @@
     now = now || Date.now();
     return { start: now, end: now + FREE_TRIAL_DAYS * 86400000, days: FREE_TRIAL_DAYS };
   }
+  /* 1.99.8 : l’essai émis par le serveur (tid) l’emporte ; l’état de l’abonnement suit la vérification la plus récente (su). */
   function mergeTrialInfo(a, b) {
     var ok = function (t) { return t && typeof t === "object" && t.start > 0 && t.end > 0; };
-    if (!ok(a)) return ok(b) ? { start: b.start, end: b.end, days: b.days || FREE_TRIAL_DAYS } : undefined;
-    if (!ok(b)) return { start: a.start, end: a.end, days: a.days || FREE_TRIAL_DAYS };
-    var w = a.start <= b.start ? a : b;
-    return { start: w.start, end: w.end, days: w.days || FREE_TRIAL_DAYS };
+    var cp = function (t) {
+      var o = { start: t.start, end: t.end, days: t.days || FREE_TRIAL_DAYS };
+      if (t.tid) { o.tid = String(t.tid); o.tok = String(t.tok || ""); o.bill = t.bill ? 1 : 0; o.paidUntil = Number(t.paidUntil) || 0; o.sub = String(t.sub || ""); o.su = Number(t.su) || 0; if (t.lk) o.lk = 1; }
+      return o;
+    };
+    if (!ok(a)) return ok(b) ? cp(b) : undefined;
+    if (!ok(b)) return cp(a);
+    var w;
+    if (!!a.tid !== !!b.tid) w = a.tid ? a : b;
+    else w = a.start <= b.start ? a : b;
+    var o = w === a ? b : a;
+    var r = cp(w);
+    if (r.tid && o.tid === r.tid) {
+      if ((Number(o.su) || 0) > r.su) { r.end = o.end; r.bill = o.bill ? 1 : 0; r.paidUntil = Number(o.paidUntil) || 0; r.sub = String(o.sub || ""); r.su = Number(o.su) || 0; }
+      if (o.lk) r.lk = 1;
+    }
+    return r;
   }
   function trialStatusText() {
     var t = state && state.trial;
     if (!t || !(t.end > 0)) return "";
+    if (t.tid && (Number(t.paidUntil) || 0) > Date.now()) return "Abonnement Vydel actif (" + ESSAI_PRICE + ")" + (t.sub === "canceled" ? " jusqu’au " + formatDateFr(toISODate(new Date(t.paidUntil))) : "") + ".";
     var endLbl = formatDateFr(toISODate(new Date(t.end)));
     var left = Math.ceil((t.end - Date.now()) / 86400000);
     if (left > 0) return "Essai gratuit de " + (t.days || FREE_TRIAL_DAYS) + " jours : jusqu’au " + endLbl + " (" + left + (left > 1 ? " jours restants)" : " jour restant)");
@@ -151,6 +166,7 @@
     var txt = trialStatusText();
     el.textContent = txt;
     el.hidden = !txt;
+    renderEssai();
   }
 
   function todayISO() {
@@ -2354,6 +2370,16 @@
       var claim = await trialClaim(trialRes, childIss ? childIss.pub : "");
       if (!claim.ok) { trialFail(claim.err); return; }
     } else trialRes = null;
+    /* 1.99.8 : l’essai est émis par le serveur maintenant (un par téléphone), avant de créer quoi que ce soit. */
+    toast("Démarrage de l’essai…");
+    var essai = await essaiStart();
+    if (!essai.ok) {
+      clearBetaSession();
+      showScreen("screen-welcome");
+      if ($("welcome-essai")) { $("welcome-essai").hidden = false; $("welcome-essai").textContent = essai.err; }
+      toast(essai.err);
+      return;
+    }
     rememberPin(pin);
     /* 1.91 : nouveau cabinet directement en mode sécurisé (clé et sujet aléatoires). */
     var ckRaw = crypto.getRandomValues(new Uint8Array(32));
@@ -2373,7 +2399,7 @@
     state.cabinetMode = "split";
     state.roster = [];
     state.secu = { at: m2c.at, closedAt: 0, acks: {} };
-    state.trial = newTrialInfo(m2c.at);
+    state.trial = essai.trial;
     if (childIss && trialRes) state.trialIssuer = { kid: childIss.kid, pub: childIss.pub, jwk: childIss.jwk, chain: null, at: Date.now(), req: trialRes.h };
     lastFait = [];
     lastFaitReady = true;
@@ -2391,6 +2417,7 @@
     enterApp(true);
     startShare();
     createRecoveryCode(true);
+    setTimeout(function () { essaiSync(true); }, 1500);
   }
 
   async function applyNewPin(newPin) {
@@ -2713,6 +2740,8 @@
   function enterApp(fresh) {
     viewDayISO = "";
     setTimeout(function () { tryTrialActivation().then(function () { trialSync(); }); }, 2500);
+    renderEssai();
+    setTimeout(function () { if (aboWaiting()) aboStartPolling(); else essaiSync(true); }, 1200);
     outboxSig = outboxSigOf(state);
     setTimeout(refreshSyncUi, 0);
     showScreen("screen-app");
@@ -4821,6 +4850,230 @@
     copyInviteText();
   }
 
+  /* —— Essai de 14 jours émis par le serveur, fin d’essai et abonnement (1.99.8) ——
+     Le serveur des essais (Cloudflare Worker vydel-essai) émet l’essai quand l’IDEL crée son cabinet
+     (un essai par téléphone, limite par réseau), garde la date de fin et l’état de l’abonnement (webhook Stripe).
+     Il ne reçoit ni nom, ni prénom, ni patient : un identifiant d’essai aléatoire, l’identifiant opaque des
+     notifications du cabinet (g, comme vydel-push) et celui de ses photos en ligne (pg, comme vydel-photos).
+     Blocage seulement si le serveur a confirmé que l’abonnement est disponible (t.bill) : sinon rien ne change. */
+  var ESSAI_URL = "https://vydel-essai.vydel-push.workers.dev";
+  var ESSAI_LINK = "https://app.vydel.fr/essai";
+  var ESSAI_TEXT = "Voici la nouvelle application Vydel, tu peux l'essayer pendant 14 jours, et si tu es contente, tu pourras souscrire à l'abonnement.";
+  var ESSAI_PRICE = "14,99 € par mois";
+  var ESSAI_WARN_DAYS = 2;
+  var ESSAI_EXPORT_DAYS = 30;
+  var LS_ESSAI_DEV = "tournee-essai-dev";
+  var SS_ESSAI_INV = "tournee-essai-inv";
+  var SS_ABO_WAIT = "tournee-abo-wait";
+  var essaiOpenedByLink = false;
+  var essaiSyncBusy = false;
+  var essaiLastCheck = 0;
+  var aboPollTimer = null;
+
+  function essaiDevId() {
+    var v = "";
+    try { v = localStorage.getItem(LS_ESSAI_DEV) || ""; } catch (e) {}
+    if (!/^[0-9a-f]{32}$/.test(v)) {
+      v = randHex(16);
+      try { localStorage.setItem(LS_ESSAI_DEV, v); } catch (e2) {}
+    }
+    return v;
+  }
+  function essaiPost(path, body) {
+    return fetch(ESSAI_URL + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+      cache: "no-store"
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { j = j || {}; j.httpStatus = r.status; return j; });
+    });
+  }
+  function essaiTrialFromServer(j) {
+    return { start: Number(j.start), end: Number(j.end), days: Number(j.days) || FREE_TRIAL_DAYS, tid: String(j.tid), tok: String(j.tok || ""),
+      bill: j.billing ? 1 : 0, paidUntil: Number(j.paidUntil) || 0, sub: String(j.sub || ""), su: Date.now() };
+  }
+  /* Démarre l’essai sur le serveur (au moment de créer le cabinet). */
+  async function essaiStart() {
+    var inv = "";
+    try { inv = sessionStorage.getItem(SS_ESSAI_INV) || ""; } catch (e) {}
+    var j;
+    try { j = await essaiPost("/start", { dev: essaiDevId(), i: inv || undefined }); }
+    catch (e2) { return { ok: false, err: "Il faut une connexion internet pour démarrer l’essai. Réessayez avec du réseau." }; }
+    if (j.ok && j.tid) {
+      try { sessionStorage.removeItem(SS_ESSAI_INV); } catch (e3) {}
+      return { ok: true, trial: essaiTrialFromServer(j) };
+    }
+    if (j.httpStatus === 409) return { ok: false, err: "Un essai de Vydel a déjà été démarré sur ce téléphone. Pour continuer, rejoignez votre cabinet ou souscrivez depuis celui-ci." };
+    if (j.httpStatus === 429) return { ok: false, err: "Trop d’essais démarrés depuis ce réseau aujourd’hui. Réessayez demain, ou depuis un autre réseau." };
+    if (j.httpStatus === 410) return { ok: false, err: "Cette invitation a été annulée. Demandez un nouveau lien à la personne qui vous l’a envoyée." };
+    return { ok: false, err: "Impossible de démarrer l’essai pour l’instant. Réessayez dans un instant." };
+  }
+  function essaiActive() {
+    var t = state && state.trial;
+    return !!(t && t.tid && t.tok);
+  }
+  function essaiAccessEnd(t) { return Math.max(Number(t.end) || 0, Number(t.paidUntil) || 0); }
+  /* « ok » | « warn » (J-2) | « blocked » */
+  function essaiMode(now) {
+    var t = state && state.trial;
+    if (!essaiActive() || !t.bill) return "ok";
+    now = now || Date.now();
+    if ((Number(t.paidUntil) || 0) > now) return "ok";
+    var end = essaiAccessEnd(t);
+    if (now >= end) return "blocked";
+    if (end - now <= ESSAI_WARN_DAYS * 86400000 && !(t.paidUntil > 0)) return "warn";
+    return "ok";
+  }
+  function essaiExportUntil() {
+    var t = state && state.trial;
+    return t ? essaiAccessEnd(t) + ESSAI_EXPORT_DAYS * 86400000 : 0;
+  }
+  function essaiApplyStatus(j) {
+    if (!j || !j.ok || !state || !state.trial || String(j.tid) !== state.trial.tid) return false;
+    var t = state.trial, changed = false;
+    var nv = { end: Number(j.end) || t.end, start: Number(j.start) || t.start, bill: j.billing ? 1 : 0, paidUntil: Number(j.paidUntil) || 0, sub: String(j.sub || "") };
+    Object.keys(nv).forEach(function (k) { if (t[k] !== nv[k]) { t[k] = nv[k]; changed = true; } });
+    if (changed) { t.su = Date.now(); persist(true); }
+    return changed;
+  }
+  async function essaiLinkIds() {
+    var t = state.trial;
+    if (t.lk || !secu || !secu.ckRaw) return;
+    var g = await pushGroupId();
+    var pg = await phCloudMac("grp");
+    var j = await essaiPost("/link", { tid: t.tid, tok: t.tok, g: g, pg: pg });
+    if (j && j.ok) { state.trial.lk = 1; essaiApplyStatus(j); persist(true); }
+  }
+  async function essaiSync(force) {
+    if (essaiSyncBusy || !unlocked || !state || !essaiActive()) { renderEssai(); return; }
+    if (!force && Date.now() - essaiLastCheck < 10 * 60000) { renderEssai(); return; }
+    essaiSyncBusy = true;
+    try {
+      await essaiLinkIds().catch(function () {});
+      var j = await essaiPost("/status", { tid: state.trial.tid, tok: state.trial.tok });
+      essaiLastCheck = Date.now();
+      essaiApplyStatus(j);
+    } catch (e) {} finally {
+      essaiSyncBusy = false;
+      renderEssai();
+      renderTrialStatus();
+    }
+  }
+  function essaiPaid() {
+    var t = state && state.trial;
+    return !!(t && (Number(t.paidUntil) || 0) > Date.now());
+  }
+  function renderEssai() {
+    var mode = unlocked && state ? essaiMode() : "ok";
+    var ban = $("essai-banner");
+    if (ban) ban.hidden = mode !== "warn";
+    var fin = $("modal-essai-fin");
+    if (fin) {
+      fin.hidden = mode !== "blocked";
+      if (mode === "blocked") {
+        var until = essaiExportUntil();
+        var canExport = Date.now() < until;
+        var endLbl = formatDateFr(toISODate(new Date(essaiAccessEnd(state.trial))));
+        var t = state.trial;
+        $("essai-fin-title").textContent = t.paidUntil > 0 ? "Votre abonnement Vydel est terminé" : "Votre essai de 14 jours est terminé";
+        $("essai-fin-text").textContent = (t.paidUntil > 0 ? "Depuis le " + endLbl + ", " : "Depuis le " + endLbl + ", ")
+          + "l’application est bloquée. "
+          + (canExport ? "Vous avez jusqu’au " + formatDateFr(toISODate(new Date(until))) + " pour récupérer vos données. Souscrivez pour continuer à utiliser Vydel." : "Le délai de 30 jours pour récupérer vos données est passé. Souscrivez pour continuer à utiliser Vydel.");
+        var ex = $("btn-essai-fin-export");
+        if (ex) ex.hidden = !canExport;
+        var exh = $("essai-fin-export-hint");
+        if (exh) {
+          exh.hidden = !canExport || (isAdmin() && !isKicked());
+          exh.textContent = "L’export est fait par l’administratrice du cabinet, depuis son téléphone.";
+        }
+      }
+    }
+    var mb = $("btn-abo-menu");
+    if (mb) mb.hidden = !(essaiActive() && state.trial.bill && !essaiPaid());
+  }
+  function openAbo() {
+    if (!essaiActive()) { toast("Abonnement indisponible pour ce cabinet."); return; }
+    if ($("abo-error")) $("abo-error").hidden = true;
+    if ($("modal-menu")) $("modal-menu").hidden = true;
+    if ($("modal-abo")) $("modal-abo").hidden = false;
+  }
+  async function aboCheckout() {
+    var err = $("abo-error");
+    var btn = $("btn-abo-go");
+    if (err) err.hidden = true;
+    if (btn) btn.disabled = true;
+    try {
+      var j = await essaiPost("/checkout", { tid: state.trial.tid, tok: state.trial.tok, ret: location.origin + location.pathname });
+      if (!j.ok || !j.url) throw new Error("checkout");
+      try { sessionStorage.setItem(SS_ABO_WAIT, String(Date.now())); } catch (e) {}
+      try { localStorage.setItem(SS_ABO_WAIT, String(Date.now())); } catch (e1) {}
+      location.assign(j.url);
+    } catch (e2) {
+      if (err) { err.hidden = false; err.textContent = "Paiement indisponible pour l’instant. Vérifiez la connexion et réessayez."; }
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+  /* Retour du paiement : vérifie l’abonnement toutes les 3 s pendant 2 minutes, débloque dès qu’il est actif. */
+  function aboStartPolling() {
+    if (aboPollTimer) clearInterval(aboPollTimer);
+    var t0 = Date.now();
+    var tick = function () {
+      if (!unlocked || !essaiActive()) return;
+      essaiSync(true).then(function () {
+        if (essaiPaid()) {
+          clearInterval(aboPollTimer); aboPollTimer = null;
+          try { localStorage.removeItem(SS_ABO_WAIT); sessionStorage.removeItem(SS_ABO_WAIT); } catch (e) {}
+          if ($("modal-abo")) $("modal-abo").hidden = true;
+          toast("Abonnement actif : Vydel est débloquée. Merci !");
+        } else if (Date.now() - t0 > 120000) { clearInterval(aboPollTimer); aboPollTimer = null; }
+      });
+    };
+    aboPollTimer = setInterval(tick, 3000);
+    tick();
+  }
+  function aboWaiting() {
+    var v = 0;
+    try { v = Number(localStorage.getItem(SS_ABO_WAIT) || sessionStorage.getItem(SS_ABO_WAIT) || 0); } catch (e) {}
+    return v && Date.now() - v < 30 * 60000;
+  }
+  function essaiInviteText(link) { return ESSAI_TEXT + "\n" + (link || ESSAI_LINK); }
+  function essaiCopy(text, okMsg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast(okMsg || "Copié."); }).catch(function () { toast("Copie impossible."); });
+    } else toast("Copie impossible.");
+  }
+  function essaiShare(text) {
+    if (navigator.share) { navigator.share({ title: "Vydel — essai de 14 jours", text: text }).catch(function () {}); return; }
+    essaiCopy(text, "Lien d’essai copié — colle-le dans un SMS, WhatsApp ou un e-mail.");
+  }
+  /* Invitation nominative : fabriquée par le serveur ; le prénom reste dans le cabinet (chiffré). */
+  async function essaiInvite(to) {
+    var j = await essaiPost("/invite", {});
+    if (!j.ok || !j.iid) throw new Error("invite");
+    var me = localDisplayName() || "";
+    var now = Date.now();
+    ensureTx();
+    if (!state.trials) state.trials = {};
+    state.trials[j.iid] = { id: j.iid, to: to, by: me, at: now, x: now + 60 * 86400000, srv: "1", ik: j.ik, link: j.link };
+    persist(true);
+    return j.link;
+  }
+  async function essaiInviteRefresh() {
+    var ids = Object.keys((state && state.trials) || {}).filter(function (k) { var t = state.trials[k]; return t && t.srv && !t.usedAt && !t.cancelAt; });
+    if (!ids.length) return;
+    try {
+      var r = await fetch(ESSAI_URL + "/invite?ids=" + ids.slice(0, 30).join(","), { cache: "no-store" }).then(function (x) { return x.json(); });
+      var changed = false;
+      ids.forEach(function (id) {
+        var s = r && r.inv && r.inv[id];
+        if (s && s.used && !state.trials[id].usedAt) { state.trials[id].usedAt = s.usedAt || Date.now(); changed = true; }
+      });
+      if (changed) { persist(true); renderTrialList(); }
+    } catch (e) {}
+  }
+
   /* —— Essais de 14 jours (1.98) ——
      Codes signés ECDSA P-256 (WebCrypto), plus aucun secret dans l’appli.
      Chaîne de confiance : racine Orva Labs (clé publique ci-dessous ; clé privée hors appli, jamais publiée)
@@ -5128,7 +5381,7 @@
         if (!r || !r.id || (Number(r.x) || 0) < old) return;
         var o = out[id] || {};
         var n = {};
-        ["id", "to", "by", "code", "h", "kid", "childPub"].forEach(function (k) { n[k] = String(o[k] || r[k] || ""); });
+        ["id", "to", "by", "code", "h", "kid", "childPub", "srv", "ik", "link"].forEach(function (k) { n[k] = String(o[k] || r[k] || ""); });
         ["at", "x"].forEach(function (k) { n[k] = Number(o[k] || r[k]) || 0; });
         ["cancelAt", "usedAt", "certAt"].forEach(function (k) { var v = Math.max(Number(o[k]) || 0, Number(r[k]) || 0); if (v) n[k] = v; });
         out[id] = n;
@@ -5178,6 +5431,7 @@
 
   function trialStateOf(t, now) {
     if (t.cancelAt) return "Annulé";
+    if (t.srv) return t.usedAt ? "Commencé" : (now >= (Number(t.x) || 0) ? "Terminé" : "En attente");
     if (now >= (Number(t.x) || 0)) return "Terminé";
     if (t.usedAt) return "Commencé";
     return "En attente";
@@ -5227,10 +5481,11 @@
   function cancelTrial(id) {
     var t = state.trials && state.trials[id];
     if (!t) return;
-    askConfirm("Annuler l'essai de " + (t.to || "cette personne") + " ?", "Le lien ne permettra plus de créer un cabinet. Un cabinet déjà créé avec cet essai continue de fonctionner.", function () {
+    askConfirm("Annuler l'essai de " + (t.to || "cette personne") + " ?", t.srv ? "Ce lien d’invitation ne permettra plus de démarrer un essai." : "Le lien ne permettra plus de créer un cabinet. Un cabinet déjà créé avec cet essai continue de fonctionner.", function () {
       ensureTx();
       var r = state.trials && state.trials[id];
       if (!r) return;
+      if (r.srv && r.ik) essaiPost("/invite/cancel", { iid: r.id, ik: r.ik }).catch(function () {});
       r.cancelAt = Date.now();
       persist(true);
       renderTrialList();
@@ -5243,6 +5498,7 @@
      Côté cabinet créé par essai : récupère son certificat. Aucun serveur : un tour sur les relais. */
   async function trialSync() {
     if (trialSyncBusy || !unlocked || !state || isKicked()) return;
+    essaiInviteRefresh();
     trialSyncBusy = true;
     try {
       var now = Date.now();
@@ -5406,12 +5662,16 @@
     }
     var to = String(($("trial-to") && $("trial-to").value) || "").trim().slice(0, 24);
     if (!to) { trialError("Indiquez le prénom de l’IDEL invitée."); return; }
-    if (!trialIssuerReady()) {
-      lastBetaText = simpleTrialText(to);
+    /* 1.99.8 : plus de lien d’activation par cabinet — l’invitation est fabriquée par le serveur des essais. */
+    if (true) {
+      var link;
+      try { link = await essaiInvite(to); } catch (eI) { trialError("Impossible de préparer l’invitation. Vérifiez la connexion et réessayez."); return; }
+      lastBetaText = essaiInviteText(link);
       if ($("beta-preview")) { $("beta-preview").hidden = false; $("beta-preview").textContent = lastBetaText; }
       if ($("beta-actions")) $("beta-actions").hidden = false;
       if ($("trial-to")) $("trial-to").value = "";
-      toast("Message prêt à envoyer.");
+      renderTrialList();
+      toast("Invitation prête à envoyer.");
       return;
     }
     if (false) {
@@ -5443,6 +5703,8 @@
     if ($("beta-actions")) $("beta-actions").hidden = true;
     trialError("");
     lastBetaText = "";
+    if ($("essai-link")) $("essai-link").textContent = ESSAI_LINK;
+    if ($("btn-essai-share")) $("btn-essai-share").hidden = !navigator.share;
     renderTrialList();
     if ($("modal-beta")) $("modal-beta").hidden = false;
     trialSync();
@@ -7386,11 +7648,12 @@
       if ((msg.type === "REMOTE_FAIT" || msg.type === "REMOTE_TX" || msg.type === "REMOTE_MSG") && unlocked) {
         pullRemote(true);
       }
+      if (msg.type === "ESSAI_J2" && unlocked) essaiSync(true);
     });
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.7-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.8-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 
@@ -10302,6 +10565,11 @@
     init.referrerPolicy = "no-referrer";
     return fetch(PH_CLOUD_URL + "/p/" + name, init);
   }
+  function phCloudPutHeaders(exp, del, grp) {
+    var h = { "Content-Type": "application/octet-stream", "X-Exp": String(exp), "X-Del": del };
+    if (grp) h["X-Grp"] = grp;
+    return h;
+  }
   /* Date d’effacement à donner au serveur : celle de l’état (horizon de nettoyage pour une ordonnance). */
   function phCloudExp(m, p) {
     var e = phIsOrdo(m) ? Math.max(Number(m.exp) || 0, phMetaExp(m, p)) : Math.min(Number(m.exp) || 0, phMetaEff(m, p));
@@ -10313,6 +10581,8 @@
     phCloudBusy = true;
     var sent = 0;
     try {
+      /* 1.99.8 : cabinet en essai → identifiant opaque de ses photos, pour l’effacement à fin d’essai + 30 jours sans abonnement */
+      var grp = essaiActive() ? await phCloudMac("grp") : "";
       var all = await idbList("ph:");
       for (var i = 0; i < all.length; i++) {
         if (!phCloudOn()) break;
@@ -10332,7 +10602,7 @@
           if (hd.status === 200 && Number(hd.headers.get("X-Exp") || 0) >= exp - 86400000) ok = true;
           else if (hd.status === 200 || hd.status === 404) {
             var blob = phBlobOf(r);
-            var up = await phCloudReq(nm.name, { method: "PUT", headers: { "Content-Type": "application/octet-stream", "X-Exp": String(exp), "X-Del": nm.del }, body: blob });
+            var up = await phCloudReq(nm.name, { method: "PUT", headers: phCloudPutHeaders(exp, nm.del, grp), body: blob });
             ok = up.status === 201 || up.status === 409;
             if (up.status === 201) sent++;
           }
@@ -11875,6 +12145,43 @@
     } catch (e) {}
   })();
   setInterval(function () { trialSync(); }, 180000);
+  /* 1.99.8 : lien d’essai unique (https://app.vydel.fr/essai → #essai, ou #essai=<invitation>) et retour du paiement (#abo=ok) */
+  (function () {
+    try {
+      var h = String(location.hash || "");
+      if (h === "#essai" || h.indexOf("#essai=") === 0) {
+        essaiOpenedByLink = true;
+        var iv = h.indexOf("=") > 0 ? h.slice(h.indexOf("=") + 1).replace(/[^0-9a-z]/g, "").slice(0, 10) : "";
+        try { if (iv) sessionStorage.setItem(SS_ESSAI_INV, iv); } catch (e1) {}
+        if ($("welcome-essai")) $("welcome-essai").hidden = false;
+        history.replaceState(null, "", location.pathname + location.search);
+      } else if (h.indexOf("#abo=") === 0) {
+        if (h === "#abo=ok") { try { localStorage.setItem(SS_ABO_WAIT, String(Date.now())); } catch (e2) {} }
+        history.replaceState(null, "", location.pathname + location.search);
+      }
+    } catch (e) {}
+  })();
+  setInterval(function () { if (unlocked && state) essaiSync(false); }, 60000);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && unlocked && state) { if (aboWaiting()) aboStartPolling(); else essaiSync(true); }
+  });
+  if ($("btn-essai-banner-sub")) $("btn-essai-banner-sub").addEventListener("click", openAbo);
+  if ($("btn-abo-menu")) $("btn-abo-menu").addEventListener("click", openAbo);
+  if ($("btn-essai-fin-sub")) $("btn-essai-fin-sub").addEventListener("click", openAbo);
+  if ($("btn-abo-go")) $("btn-abo-go").addEventListener("click", aboCheckout);
+  if ($("btn-abo-back")) $("btn-abo-back").addEventListener("click", function () { $("modal-abo").hidden = true; });
+  if ($("btn-essai-fin-export")) $("btn-essai-fin-export").addEventListener("click", function () {
+    if (Date.now() >= essaiExportUntil()) { toast("Le délai de 30 jours pour récupérer vos données est passé."); return; }
+    downloadOwnData();
+  });
+  if ($("btn-essai-fin-check")) $("btn-essai-fin-check").addEventListener("click", function () {
+    toast("Vérification de l’abonnement…");
+    essaiSync(true).then(function () { if (essaiPaid()) toast("Abonnement actif : Vydel est débloquée."); else toast("Aucun abonnement actif pour ce cabinet."); });
+  });
+  if ($("btn-essai-copy")) $("btn-essai-copy").addEventListener("click", function () {
+    essaiCopy(essaiInviteText(ESSAI_LINK), "Lien d’essai copié — colle-le dans un SMS, WhatsApp ou un e-mail.");
+  });
+  if ($("btn-essai-share")) $("btn-essai-share").addEventListener("click", function () { essaiShare(essaiInviteText(ESSAI_LINK)); });
   /* boot */
   (function () {
     try {

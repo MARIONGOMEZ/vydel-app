@@ -1,21 +1,21 @@
 /* Vydel — cache de l’appli + veille du blob chiffré (aucun nom hors appareil). */
-const CACHE = "tournee-shell-1.99.7-app";
+const CACHE = "tournee-shell-1.99.8-app";
 const SHELL = [
   "./",
   "./index.html",
-  "./css/app.css?v=1.99.7-app",
+  "./css/app.css?v=1.99.8-app",
   "./css/leaflet.css",
-  "./css/leaflet.css?v=1.99.7-app",
+  "./css/leaflet.css?v=1.99.8-app",
   "./js/app.js",
-  "./js/app.js?v=1.99.7-app",
+  "./js/app.js?v=1.99.8-app",
   "./js/import.js",
-  "./js/import.js?v=1.99.7-app",
+  "./js/import.js?v=1.99.8-app",
   "./js/leaflet.js",
-  "./js/leaflet.js?v=1.99.7-app",
+  "./js/leaflet.js?v=1.99.8-app",
   "./js/mqtt.min.js",
-  "./js/mqtt.min.js?v=1.99.7-app",
+  "./js/mqtt.min.js?v=1.99.8-app",
   "./js/mqtt-lite.js",
-  "./js/mqtt-lite.js?v=1.99.7-app",
+  "./js/mqtt-lite.js?v=1.99.8-app",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -94,7 +94,9 @@ self.addEventListener("message", (event) => {
 /* Notifications push (1.99.3) : le serveur n’envoie que le type ("tx" | "msg"), jamais de nom ni de texte. */
 const PUSH_TEXT = {
   tx: "Nouvelle transmission dans ton cabinet",
-  msg: "Nouveau message dans ton cabinet"
+  msg: "Nouveau message dans ton cabinet",
+  /* 1.99.8 : envoyé par le serveur des essais deux jours avant la fin de l’essai de 14 jours */
+  essai2: "Attention, il vous reste deux jours pour utiliser Vydel. Notez qu'à la fin de ces deux jours, l'application sera bloquée et vous avez 30 jours pour récupérer vos données."
 };
 self.addEventListener("push", (event) => {
   let k = "";
@@ -103,7 +105,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil((async () => {
     const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     clients.forEach((c) => {
-      try { c.postMessage({ type: k === "msg" ? "REMOTE_MSG" : "REMOTE_TX" }); } catch (e) {}
+      try { c.postMessage({ type: k === "essai2" ? "ESSAI_J2" : (k === "msg" ? "REMOTE_MSG" : "REMOTE_TX") }); } catch (e) {}
     });
     await self.registration.showNotification("Vydel", {
       body: body,
@@ -113,7 +115,7 @@ self.addEventListener("push", (event) => {
       renotify: true,
       data: { k: k }
     });
-    await bumpAppBadge();
+    if (k !== "essai2") await bumpAppBadge();
   })());
 });
 

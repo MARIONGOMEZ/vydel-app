@@ -2215,3 +2215,19 @@ textarea.tx-area.onb-paste { box-sizing: border-box; }
 .onb-top .onb-stepn { text-align: center; white-space: nowrap; }
 .onbr-row input[type="checkbox"] { width: 20px; height: 20px; margin: 0 8px 0 0; flex: none; }
 .onbr-row .onb-check { display: flex; align-items: center; font-size: 14px; min-height: 36px; }
+
+/* 1.99.8 : essai de 14 jours — bandeau J-2, fin d’essai, abonnement */
+.banner-essai { background: #fff4d6; color: #5a4300; flex-wrap: wrap; align-items: center; }
+.banner-essai p { flex: 1 1 220px; }
+.btn-essai-sub { width: auto; min-height: 40px; padding: 8px 16px; margin: 0; }
+.modal-essai { z-index: 95; background: rgba(28,43,42,0.92); }
+.modal-essai .sheet { text-align: center; }
+.modal-essai .btn { margin-top: 10px; }
+.modal-abo { z-index: 96; }
+.abo-price { font-size: 18px; margin: 6px 0 10px; }
+.abo-price strong { font-size: 30px; }
+.abo-list { text-align: left; }
+.welcome-essai { background: #e8f4f2; border-radius: 12px; padding: 10px 12px; margin: 8px 0 10px; color: var(--ink); }
+#essai-link-actions { display: flex; gap: 8px; }
+#essai-link-actions .btn { flex: 1; margin-top: 0; }
+#essai-link-actions .btn[hidden] { display: none; }

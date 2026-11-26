@@ -40,7 +40,7 @@
             <li><strong>Une clé secrète par cabinet.</strong> Chaque cabinet a sa propre clé, tirée au hasard par l’appli (32 octets). Elle ne dépend pas du PIN.</li>
             <li id="cgu-pin-6"><strong>PIN de 6 chiffres requis à la création d’un nouveau cabinet.</strong> Les cabinets existants gardent leur PIN actuel.</li>
             <li><strong>Le PIN protège la clé sur votre téléphone.</strong> Il ne sert qu’à ça. Pour qu’il soit très long à deviner, l’appli fait un calcul volontairement lent (600 000 tours), avec un « sel » aléatoire propre à chaque téléphone.</li>
-            <li><strong>Pas de serveur Vydel, pas de compte.</strong> Pour partager la tournée entre téléphones, l’appli passe par des relais publics. Ils ne voient que du texte chiffré, illisible sans la clé.</li>
+            <li><strong>Pas de compte.</strong> Pour partager la tournée entre téléphones, l’appli passe par des relais publics. Ils ne voient que du texte chiffré, illisible sans la clé. Seules les photos de documents sont aussi gardées sur un serveur de stockage, chiffrées sur le téléphone (voir « Photos de documents »).</li>
             <li><strong>Le brouillon aussi.</strong> Une fiche patient en cours de saisie est gardée chiffrée sur le téléphone, même si l’appli est fermée ; elle est effacée une fois la fiche enregistrée ou annulée. Hors ligne, les changements attendent sur le téléphone, chiffrés, et partent au retour du réseau.</li>
           </ul>
           <p><strong>Ce que le chiffrement ne couvre pas :</strong></p>
@@ -55,8 +55,8 @@
           <h2 class="cgu-h" id="cgu-photos">Photos de documents</h2>
           <ul class="cgu-list">
             <li><strong>Des documents seulement, jamais de patients.</strong> Accès ou clé, ordonnance, carte vitale.</li>
-            <li id="cgu-photos-partage"><strong>Partagées avec tous les membres du cabinet (associés et remplaçants).</strong> Elles sont chiffrées sur le téléphone, puis circulent par des relais publics sans y être gardées, et ne sont jamais en clair, ni sur les relais ni dans le stockage des téléphones. Elles s’effacent automatiquement : à la fin de l’ordonnance pour une photo d’ordonnance, au bout de 90 jours pour les autres. L’accès est protégé par le PIN du cabinet et le contenu est chiffré sur le téléphone avec la clé du cabinet. Chaque téléphone du cabinet en garde une copie chiffrée. Un cabinet pas encore sécurisé les garde sur le seul téléphone qui les a prises.</li>
-            <li><strong>Une photo n’arrive que si un téléphone qui l’a est en ligne en même temps.</strong> Il n’y a pas de serveur qui les stocke.</li>
+            <li id="cgu-photos-partage"><strong>Partagées avec tous les membres du cabinet (associés et remplaçants).</strong> Elles sont chiffrées sur le téléphone, puis envoyées aux autres téléphones par des relais publics, qui ne les gardent pas, et par un serveur de stockage, qui en garde une copie chiffrée. Elles ne sont jamais en clair, ni sur les relais, ni sur ce serveur, ni dans le stockage des téléphones. Elles s’effacent automatiquement : à la fin de l’ordonnance pour une photo d’ordonnance, au bout de 90 jours pour les autres. L’accès est protégé par le PIN du cabinet et le contenu est chiffré sur le téléphone avec la clé du cabinet. Chaque téléphone du cabinet en garde une copie chiffrée. Un cabinet pas encore sécurisé les garde sur le seul téléphone qui les a prises.</li>
+            <li><strong>Gardées en ligne, chiffrées, pour les membres du cabinet.</strong> Une copie chiffrée de chaque photo est gardée sur un serveur de stockage (Cloudflare) : les membres du cabinet la reçoivent même si les téléphones qui l’ont sont éteints. Le serveur ne reçoit que des fichiers chiffrés sur le téléphone, sans nom de patient ni type de document : il ne peut pas les lire. La copie en ligne est effacée quand la photo est supprimée et, sinon, automatiquement à sa date d’effacement (pour une ordonnance dont la date de fin a été avancée, à l’ancienne date).</li>
             <li><strong>Effacées automatiquement sur tous les téléphones.</strong> Une photo d’ordonnance reste jusqu’à la date de fin de l’ordonnance indiquée sur la fiche du patient (la plus tardive s’il y en a deux), puis elle est effacée ; si cette date est modifiée, l’effacement suit. Sans date de fin, elle est effacée au bout de 90 jours. Les photos d’accès ou de carte vitale sont effacées au bout de 90 jours, ou à la fin de l’ordonnance si elle arrive avant. Une photo supprimée l’est partout. Un téléphone resté éteint l’efface à sa prochaine ouverture.</li>
             <li>Une capture d’écran ou une sauvegarde du téléphone échappe à cet effacement : évitez-les.</li>
             <li>La carte vitale et l’ordonnance sont des données de santé : ne les photographiez que si c’est nécessaire.</li>
@@ -386,7 +386,7 @@
             <div id="ordo-states"></div>
             <h3 class="fiche-h ordo-ph-h">Photos d’ordonnance</h3>
             <p class="ph-lock" id="ordo-ph-lock">🔒 Chiffrées · partagées avec le cabinet</p>
-            <p class="hint" id="ordo-ph-hint">Visibles sur tous les téléphones du cabinet. Chiffrées avec la clé du cabinet et envoyées de téléphone à téléphone : rien n’est gardé sur les relais. Une photo arrive quand un téléphone qui l’a est en ligne en même temps. Effacées partout à la fin de l’ordonnance (date de fin indiquée sur la fiche), ou après 90 jours s’il n’y a pas de date. 6 photos maximum en tout, avec l’onglet Photos.</p>
+            <p class="hint" id="ordo-ph-hint">Visibles sur tous les téléphones du cabinet. Chiffrées sur le téléphone avec la clé du cabinet ; une copie chiffrée est gardée en ligne, illisible pour le serveur, et les autres téléphones la reçoivent même si celui qui l’a prise est éteint. Effacées partout, en ligne compris, à la fin de l’ordonnance (date de fin indiquée sur la fiche), ou après 90 jours s’il n’y a pas de date. 6 photos maximum en tout, avec l’onglet Photos.</p>
             <div id="ordo-ph-grid" class="ph-grid"></div>
             <p id="ordo-ph-msg" class="hint" hidden></p>
             <button type="button" class="btn btn-ghost" id="btn-ordo-ph-add">Ajouter une photo d’ordonnance</button>
@@ -409,7 +409,7 @@
           <section class="fiche-pane" role="tabpanel" id="fp-photos" aria-labelledby="ft-photos" tabindex="0" hidden>
             <h3 class="fiche-h">Photos</h3>
             <p class="ph-lock" id="ph-lock">🔒 Chiffrées · partagées avec le cabinet</p>
-            <p class="hint" id="ph-hint">Documents seulement (accès / clé, ordonnance, carte vitale), jamais le patient. Visibles sur tous les téléphones du cabinet, chiffrées, envoyées de téléphone à téléphone sans rester sur les relais. Ordonnance : effacée partout à la fin de l’ordonnance (90 jours sans date) ; accès / clé et carte vitale : après 90 jours (ou à la fin de l’ordonnance si plus tôt). 6 maximum.</p>
+            <p class="hint" id="ph-hint">Documents seulement (accès / clé, ordonnance, carte vitale), jamais le patient. Visibles sur tous les téléphones du cabinet, chiffrées sur le téléphone, avec une copie chiffrée gardée en ligne que le serveur ne peut pas lire. Ordonnance : effacée partout à la fin de l’ordonnance (90 jours sans date) ; accès / clé et carte vitale : après 90 jours (ou à la fin de l’ordonnance si plus tôt). 6 maximum.</p>
             <div id="ph-grid" class="ph-grid"></div>
             <p id="ph-msg" class="hint" hidden></p>
             <button type="button" class="btn btn-primary" id="btn-ph-add">Ajouter une photo</button>

@@ -64,6 +64,9 @@
   var PUSH_URL = "https://vydel-push.vydel-push.workers.dev";
   var PUSH_VAPID = "BEzJLLGAPGF3UPhtqinAH9sECdXsqX-q7whaeHyYhZ1Mo9mWZvPvgIMtKnVLeElPkGOpHT3Xg-_EBY2BOpBD6HQ"; /* clé PUBLIQUE VAPID du serveur */
   var LS_PUSH = "tournee.push";
+  /* 2.0 (photos-cloud) : stockage aveugle des photos de documents (Cloudflare Worker + KV). Vide = comportement d’avant
+     (téléphone à téléphone uniquement). Ici : Worker de TEST, CORS limité à https://app.vydel.fr. */
+  var PH_CLOUD_URL = "https://vydel-photos-test.vydel-push.workers.dev";
   var MQTT_URLS = ["wss://broker.hivemq.com:8884/mqtt", "wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt"];
   var voiceBlobs = {};
   var recMedia = null;
@@ -6989,6 +6992,7 @@
     outboxTries = 0;
     if (unlocked && key && meta && (shareDirty || outboxGet().n > 0)) { shareDirty = true; persist(true); }
     toast("Réseau de retour. Synchronisation…");
+    if (unlocked) { phCloudMiss = {}; setTimeout(phCloudSync, 2000); }
   });
 
   function showShareBanner() {
@@ -9887,6 +9891,7 @@
       state.phMeta[id] = { id: id, pid: editingId, type: type, at: at, exp: rec.exp, by: me, h: rec.h, has: has };
       await persist(true);
       phPush(id);
+      phCloudPushAll().catch(function () {});
     }
     return true;
   }
@@ -9915,6 +9920,7 @@
       changed = true;
     }
     if (changed) persist(true);
+    phCloudSync();
   }
   function phPublish(obj) {
     if (!phSyncOn() || !mqttHandle || !mqttHandle.publishTo || !mqttLive) return Promise.resolve(false);
@@ -9995,14 +10001,7 @@
     var m = state.phMeta && state.phMeta[id];
     var hm = o.m || {};
     if (m && !phAlive(m, now)) return; /* supprimée ou expirée : refusée */
-    var exp;
-    if ((m ? m.type : hm.type) === "ordo") {
-      /* 1.99 : ordonnance → fin d’ordonnance de notre fiche (même règle que l’émetteur) ; fiche inconnue : celle annoncée. */
-      var op = phPatientOf(String((m && m.pid) || hm.pid || ""));
-      exp = op ? phOrdoExp({ at: (m && m.at) || Number(hm.at) || 0 }, op) : Math.max(Number(hm.exp) || 0, m ? Number(m.exp) || 0 : 0);
-    } else {
-      exp = Math.min(Number(hm.exp) || 0, m ? Number(m.exp) || 0 : Infinity, (Number(hm.at) || 0) + PH_DAYS * 86400000);
-    }
+    var exp = phRxExp(m, hm);
     if (!(exp > now)) return;
     var n = o.n | 0, i = o.i | 0;
     if (n < 1 || n > 64 || i < 0 || i >= n || typeof o.d !== "string") return;
@@ -10013,16 +10012,33 @@
     if (rx.got === 1 && editingId && editingId === (m ? m.pid : hm.pid)) phRenderSoon();
     if (rx.got < n) return;
     delete phRx[id];
-    var pid = String((m && m.pid) || hm.pid || "");
-    if ((await phLocalIds(pid))[id]) return;
     var total = 0;
     rx.parts.forEach(function (u) { total += u.length; });
     var blob = new Uint8Array(total);
     var off = 0;
     rx.parts.forEach(function (u) { blob.set(u, off); off += u.length; });
+    await phAcceptBlob(id, blob, hm, exp);
+  }
+  /* Expiration d’une copie reçue (relais ou stockage en ligne) : même règle que l’émetteur. */
+  function phRxExp(m, hm) {
+    hm = hm || {};
+    if ((m ? m.type : hm.type) === "ordo") {
+      /* 1.99 : ordonnance → fin d’ordonnance de notre fiche (même règle que l’émetteur) ; fiche inconnue : celle annoncée. */
+      var op = phPatientOf(String((m && m.pid) || hm.pid || ""));
+      return op ? phOrdoExp({ at: (m && m.at) || Number(hm.at) || 0 }, op) : Math.max(Number(hm.exp) || 0, m ? Number(m.exp) || 0 : 0);
+    }
+    return Math.min(Number(hm.exp) || 0, m ? Number(m.exp) || 0 : Infinity, (Number(hm.at) || 0) + PH_DAYS * 86400000);
+  }
+  /* Copie complète reçue : vérifiée (empreinte de l’état), puis gardée chiffrée dans l’IndexedDB. */
+  async function phAcceptBlob(id, blob, hm, exp) {
+    var m = state.phMeta && state.phMeta[id];
+    hm = hm || {};
+    if (!(exp > Date.now())) return false;
+    var pid = String((m && m.pid) || hm.pid || "");
+    if (!pid || (await phLocalIds(pid))[id]) return false;
     var h = await phHashHex(blob);
     var want = (m && m.h) || String(hm.h || "");
-    if (!want || h !== want || blob.length < 13) return;
+    if (!want || h !== want || blob.length < 13) return false;
     var rec = {
       v: 1, pid: pid, id: id,
       type: (m && m.type) || (PH_TYPES[hm.type] ? hm.type : "acces"),
@@ -10031,16 +10047,17 @@
       iv: b64(blob.subarray(0, 12)), ct: blob.slice(12).buffer
     };
     var cur = state.phMeta && state.phMeta[id];
-    if (cur && !phAlive(cur)) return;
+    if (cur && !phAlive(cur)) return false;
     await idbPut("ph:" + pid + ":" + id, rec);
     if (!state.phMeta) state.phMeta = {};
     if (!state.phMeta[id]) {
       var mc = phCleanMeta({ id: id, pid: pid, type: rec.type, at: rec.at, exp: exp, by: rec.by, h: h, has: {} });
       if (mc) state.phMeta[id] = mc;
     }
-    phNoteHave(id, now);
+    phNoteHave(id, Date.now());
     persist(false);
     if (editingId === pid) renderPatientPhotos();
+    return true;
   }
   var phRenderTimer = null;
   function phRenderSoon() {
@@ -10059,6 +10076,7 @@
     if (!phSyncOn()) return;
     purgePhotos().then(function () {
       phAskMissing(false);
+      phCloudSync();
       if (editingId && $("modal-patient") && !$("modal-patient").hidden) {
         var sig = phSigFor(editingId);
         if (sig !== phLastSig) renderPatientPhotos();
@@ -10066,7 +10084,7 @@
     }).catch(function () {});
   }
   function phOnConnect() {
-    setTimeout(function () { phAskMissing(true).catch(function () {}); }, 1500);
+    setTimeout(function () { phAskMissing(true).catch(function () {}); phCloudSync(); }, 1500);
   }
   function phStartSweep() {
     if (phSweepTimer) clearInterval(phSweepTimer);
@@ -10075,6 +10093,7 @@
       purgePhotos().then(function (ch) {
         if (ch && editingId) renderPatientPhotos();
         phAskMissing(false);
+        phCloudSync();
       }).catch(function () {});
     }, 60000);
   }
@@ -10086,6 +10105,167 @@
     phSeenOther = {};
     phWantAt = 0;
     phLastSig = "";
+    phCloudMiss = {};
+    phCloudK = null;
+    phCloudKFor = null;
+  }
+  /* —— 2.0 : copie chiffrée en ligne (serveur aveugle). ——
+     - Le bloc envoyé est exactement celui qui circule déjà par les relais : iv + image chiffrée AES-GCM avec la clé du cabinet.
+     - Nom du bloc = HMAC-SHA256(clé dérivée de la clé du cabinet, « n:<id> ») : 64 hex, non devinable, sans lien visible
+       avec le cabinet, le patient ou le type. Aucune métadonnée en clair (ni nom, ni date de prise, ni type).
+     - Jeton d’effacement = HMAC(« d:<id> ») : seuls les membres du cabinet peuvent le recalculer ; le serveur n’en garde que
+       l’empreinte SHA-256.
+     - Expiration côté serveur = date d’effacement de la photo (horizon pour une ordonnance) ; suppression / pierre tombale
+       → DELETE. Le serveur efface de lui-même à l’expiration (KV).
+     - En plus du téléphone à téléphone : rien ne change si le serveur est injoignable. —— */
+  var phCloudK = null;
+  var phCloudKFor = null;
+  var phCloudMiss = {};
+  var phCloudGone = {};
+  var phCloudBusy = false;
+  var phCloudPullBusy = false;
+  var PH_CLOUD_MAX_DAYS = 700;
+  function phCloudOn() {
+    return !!PH_CLOUD_URL && phSyncOn() && !!secu.ckRaw && typeof fetch === "function" && !!(crypto && crypto.subtle);
+  }
+  function phHex(u8) {
+    var s = "";
+    for (var i = 0; i < u8.length; i++) s += ("0" + u8[i].toString(16)).slice(-2);
+    return s;
+  }
+  async function phCloudKey() {
+    if (!phCloudK || phCloudKFor !== secu.ckRaw) {
+      phCloudKFor = secu.ckRaw;
+      var raw = secu.ckRaw instanceof Uint8Array ? secu.ckRaw : new Uint8Array(secu.ckRaw);
+      var base = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      var sub = new Uint8Array(await crypto.subtle.sign("HMAC", base, new TextEncoder().encode("vydel-photos-v1")));
+      phCloudK = await crypto.subtle.importKey("raw", sub, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    }
+    return phCloudK;
+  }
+  async function phCloudMac(label) {
+    var k = await phCloudKey();
+    return phHex(new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(label))));
+  }
+  async function phCloudNames(id) {
+    var tok = await phCloudMac("d:" + id);
+    return {
+      name: await phCloudMac("n:" + id),
+      tok: tok,
+      del: phHex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(tok)))),
+      tag: (await phCloudMac("tag")).slice(0, 8)
+    };
+  }
+  function phCloudReq(name, init) {
+    init = init || {};
+    init.cache = "no-store";
+    init.credentials = "omit";
+    init.referrerPolicy = "no-referrer";
+    return fetch(PH_CLOUD_URL + "/p/" + name, init);
+  }
+  /* Date d’effacement à donner au serveur : celle de l’état (horizon de nettoyage pour une ordonnance). */
+  function phCloudExp(m, p) {
+    var e = phIsOrdo(m) ? Math.max(Number(m.exp) || 0, phMetaExp(m, p)) : Math.min(Number(m.exp) || 0, phMetaEff(m, p));
+    return Math.min(e, Date.now() + PH_CLOUD_MAX_DAYS * 86400000);
+  }
+  /* Envoie en ligne les photos que ce téléphone a et que le serveur n’a pas (ou avec une date plus courte). */
+  async function phCloudPushAll() {
+    if (!phCloudOn() || phCloudBusy || (typeof navigator !== "undefined" && navigator.onLine === false)) return 0;
+    phCloudBusy = true;
+    var sent = 0;
+    try {
+      var all = await idbList("ph:");
+      for (var i = 0; i < all.length; i++) {
+        if (!phCloudOn()) break;
+        var r = all[i].v || {};
+        var m = r.id && state.phMeta ? state.phMeta[r.id] : null;
+        if (!r.ct || !r.iv || !phAlive(m)) continue;
+        var p = patientById(m.pid);
+        if (p && isPatientGone(p)) continue;
+        var exp = phCloudExp(m, p);
+        if (!(exp > Date.now() + 120000)) continue;
+        var nm = await phCloudNames(r.id);
+        var mark = nm.tag + ":" + Math.floor(exp / 86400000);
+        if (r.cu === mark) continue;
+        var ok = false;
+        try {
+          var hd = await phCloudReq(nm.name, { method: "HEAD" });
+          if (hd.status === 200 && Number(hd.headers.get("X-Exp") || 0) >= exp - 86400000) ok = true;
+          else if (hd.status === 200 || hd.status === 404) {
+            var blob = phBlobOf(r);
+            var up = await phCloudReq(nm.name, { method: "PUT", headers: { "Content-Type": "application/octet-stream", "X-Exp": String(exp), "X-Del": nm.del }, body: blob });
+            ok = up.status === 201 || up.status === 409;
+            if (up.status === 201) sent++;
+          }
+        } catch (eN) { ok = false; }
+        if (!ok) continue;
+        r.cu = mark;
+        await idbPut(all[i].k, r);
+        if (editingId === r.pid) phRenderSoon();
+      }
+    } finally {
+      phCloudBusy = false;
+    }
+    return sent;
+  }
+  /* Récupère en ligne les photos de l’état que ce téléphone n’a pas encore (sans attendre un autre téléphone). */
+  async function phCloudPull() {
+    if (!phCloudOn() || phCloudPullBusy || (typeof navigator !== "undefined" && navigator.onLine === false)) return 0;
+    phCloudPullBusy = true;
+    var got = 0;
+    try {
+      var ids = await phMissingIds();
+      var now = Date.now();
+      for (var i = 0; i < ids.length && i < 40; i++) {
+        var id = ids[i];
+        var miss = phCloudMiss[id];
+        if (miss && miss.until > now) continue;
+        if (!phCloudOn()) break;
+        var m = state.phMeta[id];
+        if (!m || !m.h) continue;
+        try {
+          var nm = await phCloudNames(id);
+          var res = await phCloudReq(nm.name, { method: "GET" });
+          if (res.status !== 200) {
+            var n = miss ? miss.n + 1 : 1;
+            phCloudMiss[id] = { n: n, until: Date.now() + Math.min(30 * 60000, 20000 * Math.pow(2, n - 1)) };
+            continue;
+          }
+          var blob = new Uint8Array(await res.arrayBuffer());
+          var hm = { pid: m.pid, type: m.type, at: m.at, exp: phIsOrdo(m) ? Math.max(Number(m.exp) || 0, phMetaExp(m)) : m.exp, by: m.by, h: m.h };
+          if (await phAcceptBlob(id, blob, hm, phRxExp(m, hm))) { got++; delete phCloudMiss[id]; }
+          else phCloudMiss[id] = { n: 9, until: Date.now() + 30 * 60000 };
+        } catch (eG) {
+          phCloudMiss[id] = { n: 1, until: Date.now() + 20000 };
+        }
+      }
+    } finally {
+      phCloudPullBusy = false;
+    }
+    return got;
+  }
+  /* Pierres tombales de l’état → effacement de la copie en ligne (une fois par session et par photo). */
+  async function phCloudDelGone() {
+    if (!phCloudOn() || (typeof navigator !== "undefined" && navigator.onLine === false)) return;
+    var mm = (state && state.phMeta) || {};
+    var dd = (state && state.deleted) || {};
+    /* Pierre tombale, ou patient supprimé (même règle que la fusion de l’état : suppression postérieure à la prise). */
+    var ids = Object.keys(mm).filter(function (id) {
+      var m = mm[id];
+      if (!m || phCloudGone[id]) return false;
+      return !!m.del || !!(m.pid && dd[m.pid] && dd[m.pid] >= (m.at || 0));
+    });
+    for (var i = 0; i < ids.length; i++) {
+      try {
+        var nm = await phCloudNames(ids[i]);
+        var res = await phCloudReq(nm.name, { method: "DELETE", headers: { "X-Del-Token": nm.tok } });
+        if (res.status === 204 || res.status === 404 || res.status === 403) phCloudGone[ids[i]] = 1;
+      } catch (eX) {}
+    }
+  }
+  function phCloudSync() {
+    if (!phCloudOn()) return Promise.resolve();
+    return phCloudDelGone().then(phCloudPull).then(phCloudPushAll).catch(function () {});
   }
   async function phOpen(rec) {
     var pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(rec.iv) }, key, rec.ct);
@@ -10118,11 +10298,14 @@
     if (!phSyncOn()) return "Sur ce téléphone uniquement";
     var m = item.m;
     var others = phOthers(m);
+    var cloud = phCloudOn();
     if (item.local) {
-      if (others.length) return "Aussi chez " + others.join(", ").replace(/, ([^,]*)$/, " et $1");
+      if (others.length) return "Aussi chez " + others.join(", ").replace(/, ([^,]*)$/, " et $1") + (cloud && item.v && item.v.cu ? " · gardée en ligne, chiffrée" : "");
+      if (cloud) return item.v && item.v.cu ? "Gardée en ligne, chiffrée · les autres téléphones la reçoivent même si celui-ci est éteint" : "Envoi en ligne dès que ce téléphone a du réseau";
       return "Pas encore chez les autres · part dès qu’un téléphone du cabinet est en ligne";
     }
     if (phRx[m.id]) return "Réception en cours…";
+    if (cloud) return "Pas encore sur ce téléphone · se télécharge dès qu’il a du réseau";
     var holders = others.length ? others : (m && m.by && foldName(m.by) !== foldName(localDisplayName()) && !isHiddenPresence(m.by) ? [m.by] : []);
     return "Pas encore sur ce téléphone · arrive quand " + (holders.length ? phNameList(holders) : "un téléphone qui l’a") + " est en ligne";
   }
@@ -10190,6 +10373,7 @@
     if (phSyncOn() && id && state.phMeta && state.phMeta[id]) {
       phTombstone(id, pid, state.phMeta[id].exp);
       persist(true);
+      phCloudDelGone().catch(function () {});
     }
     return done.then(renderPatientPhotos);
   }
@@ -10223,6 +10407,11 @@
       ordo: "Visibles sur tous les téléphones du cabinet. Chiffrées avec la clé du cabinet et envoyées de téléphone à téléphone : rien n’est gardé sur les relais. Une photo arrive quand un téléphone qui l’a est en ligne en même temps. Effacées partout à la fin de l’ordonnance (date de fin indiquée sur la fiche), ou après 90 jours s’il n’y a pas de date. 6 photos maximum en tout, avec l’onglet Photos.",
       photos: "Documents seulement (accès / clé, ordonnance, carte vitale), jamais le patient. Visibles sur tous les téléphones du cabinet, chiffrées, envoyées de téléphone à téléphone sans rester sur les relais. Ordonnance : effacée partout à la fin de l’ordonnance (90 jours sans date) ; accès / clé et carte vitale : après 90 jours (ou à la fin de l’ordonnance si plus tôt). 6 maximum."
     },
+    cloud: {
+      lock: "🔒 Chiffrées · partagées avec le cabinet",
+      ordo: "Visibles sur tous les téléphones du cabinet. Chiffrées sur le téléphone avec la clé du cabinet ; une copie chiffrée est gardée en ligne, illisible pour le serveur, et les autres téléphones la reçoivent même si celui qui l’a prise est éteint. Effacées partout, en ligne compris, à la fin de l’ordonnance (date de fin indiquée sur la fiche), ou après 90 jours s’il n’y a pas de date. 6 photos maximum en tout, avec l’onglet Photos.",
+      photos: "Documents seulement (accès / clé, ordonnance, carte vitale), jamais le patient. Visibles sur tous les téléphones du cabinet, chiffrées sur le téléphone, avec une copie chiffrée gardée en ligne que le serveur ne peut pas lire. Ordonnance : effacée partout à la fin de l’ordonnance (90 jours sans date) ; accès / clé et carte vitale : après 90 jours (ou à la fin de l’ordonnance si plus tôt). 6 maximum."
+    },
     local: {
       lock: "🔒 Sur ce téléphone uniquement",
       ordo: "Visibles seulement sur ce téléphone, pas sur les autres. Chiffrées, jamais partagées. Effacées à la fin de l’ordonnance (date de fin indiquée sur la fiche), ou après 90 jours s’il n’y a pas de date. 6 photos maximum en tout, avec l’onglet Photos.",
@@ -10230,7 +10419,7 @@
     }
   };
   function phSetTexts() {
-    var t = phSyncOn() ? PH_TXT.sync : PH_TXT.local;
+    var t = phSyncOn() ? (phCloudOn() ? PH_TXT.cloud : PH_TXT.sync) : PH_TXT.local;
     [["ph-lock", t.lock], ["ordo-ph-lock", t.lock], ["ph-hint", t.photos], ["ordo-ph-hint", t.ordo]].forEach(function (x) {
       if ($(x[0]) && $(x[0]).textContent !== x[1]) $(x[0]).textContent = x[1];
     });
@@ -10319,8 +10508,9 @@
       if (i >= files.length) {
         if (saved) {
           var sync = phSyncOn();
-          var one = sync ? "Photo enregistrée (chiffrée). Elle part vers les autres téléphones dès qu’ils sont en ligne." : "Photo enregistrée sur ce téléphone (chiffrée).";
-          var many = sync ? saved + " photos enregistrées (chiffrées). Elles partent vers les autres téléphones dès qu’ils sont en ligne." : saved + " photos enregistrées sur ce téléphone (chiffrées).";
+          var cl = sync && phCloudOn();
+          var one = cl ? "Photo enregistrée (chiffrée). Une copie chiffrée est gardée en ligne pour les autres téléphones du cabinet." : sync ? "Photo enregistrée (chiffrée). Elle part vers les autres téléphones dès qu’ils sont en ligne." : "Photo enregistrée sur ce téléphone (chiffrée).";
+          var many = cl ? saved + " photos enregistrées (chiffrées). Une copie chiffrée est gardée en ligne pour les autres téléphones du cabinet." : sync ? saved + " photos enregistrées (chiffrées). Elles partent vers les autres téléphones dès qu’ils sont en ligne." : saved + " photos enregistrées sur ce téléphone (chiffrées).";
           toast(saved === 1 ? one : many);
           phHidePickers();
         }

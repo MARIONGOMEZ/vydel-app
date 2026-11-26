@@ -712,8 +712,10 @@
   }
 
   function showScreen(id) {
-    ["screen-welcome", "screen-pin", "screen-join", "screen-beta", "screen-app", "screen-cgu"].forEach(function (s) {
-      $(s).hidden = s !== id;
+    /* 1.99.8 : arrivée par le lien d’essai → écran unique /essai au lieu de l’accueil ; l’ancien écran « J’ai reçu un essai » aussi */
+    if ((id === "screen-welcome" && essaiOpenedByLink) || id === "screen-beta") { essaiOpenedByLink = false; id = "screen-essai"; }
+    ["screen-welcome", "screen-essai", "screen-pin", "screen-join", "screen-beta", "screen-app", "screen-cgu"].forEach(function (s) {
+      if ($(s)) $(s).hidden = s !== id;
     });
   }
 
@@ -866,10 +868,21 @@
       showScreen("screen-app");
       return;
     }
+    if (pinMode === "setup" || pinMode === "confirm") { showScreen("screen-essai"); return; }
     showScreen("screen-welcome");
   });
 
-  $("btn-create").addEventListener("click", function () {
+  $("btn-create").addEventListener("click", function () { essaiShowScreen(); });
+  function essaiShowScreen() {
+    if ($("essai-error")) $("essai-error").hidden = true;
+    showScreen("screen-essai");
+    try { if (!/\/essai\/?$/.test(location.pathname)) history.replaceState(null, "", location.pathname + location.search + "#essai"); } catch (e) {}
+  }
+  if ($("btn-essai-back")) $("btn-essai-back").addEventListener("click", function () {
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+    $("screen-essai").hidden = true; $("screen-welcome").hidden = false;
+  });
+  if ($("btn-essai-go")) $("btn-essai-go").addEventListener("click", function () {
     if (!canCreateCabinet()) {
       toast("Pour créer un cabinet, il faut un essai offert par une IDEL qui utilise Vydel.");
       showScreen("screen-beta");
@@ -2375,8 +2388,8 @@
     var essai = await essaiStart();
     if (!essai.ok) {
       clearBetaSession();
-      showScreen("screen-welcome");
-      if ($("welcome-essai")) { $("welcome-essai").hidden = false; $("welcome-essai").textContent = essai.err; }
+      showScreen("screen-essai");
+      if ($("essai-error")) { $("essai-error").hidden = false; $("essai-error").textContent = essai.err; }
       toast(essai.err);
       return;
     }
@@ -5234,7 +5247,7 @@
     var code = extractTrialCode(raw);
     if (!code) return { ok: false, err: "Code non reconnu. Collez le message ou le lien reçu." };
     if (code.indexOf("VYD-") === 0) {
-      return { ok: false, err: "Ancien code d’essai : il n’est plus utilisé. Touchez « Tester Vydel 14 jours » sur l’accueil." };
+      return { ok: false, err: "Ancien code d’essai : il n’est plus utilisé. Touchez « Proposer l’essai 14 jours » sur l’accueil." };
       var m = code.match(/^VYD-([A-Z0-9]{8})-(\d{10,})-([A-Za-z0-9_-]{10})$/);
       if (!m) return { ok: false, err: TRIAL_BAD };
       var id = m[1], exp = Number(m[2]);
@@ -5614,7 +5627,7 @@
     return "Salut" + (to ? " " + to : "") + " ! Je te propose d’essayer Vydel, une appli pour les tournées IDEL. Idéale aussi pour les remplaçants.\n\n"
       + "Ce n’est pas un logiciel de facturation ni un dossier médical : c’est la checklist du jour, les passages et le relais entre collègues.\n\n"
       + "1) Ouvre ce lien : " + VYDEL_APP_URL + "\n"
-      + "2) Touche « Tester Vydel 14 jours » et crée ton propre cabinet (PIN de 6 chiffres).\n\n"
+      + "2) Touche « Proposer l’essai 14 jours » et crée ton propre cabinet (PIN de 6 chiffres).\n\n"
       + "Tu me dis ce qui coince ou ce qui manque. Merci !\n\n"
       + "© 2026 Orva Labs. Tous droits réservés.";
   }
@@ -5720,6 +5733,14 @@
       toast("Cabinet complet : 2 administrateurs et 3 collaborateurs.");
       return;
     }
+    /* 1.99.8 : 2 remplaçants au plus par cabinet (invitations en attente + remplaçants qui ont rejoint et ne sont pas retirés) */
+    if (rempSeatsUsed() >= REMP_MAX) {
+      var em = "Limite atteinte : 2 remplaçants au plus par cabinet. Pour en inviter un autre, annulez une invitation en attente ou retirez un remplaçant dans « Personnes du cabinet ».";
+      if ($("invite-error")) { $("invite-error").hidden = false; $("invite-error").textContent = em; }
+      toast(em);
+      return;
+    }
+    if ($("invite-error")) $("invite-error").hidden = true;
     ensureTx();
     var token = randomInvite();
     var label = String(($("invite-for") && $("invite-for").value) || "").replace(/\s+/g, " ").trim().slice(0, 24);
@@ -5757,6 +5778,30 @@
     var n = before - state.invites.length;
     if (n && unlocked && key && meta) persist(true);
     return n;
+  }
+
+  /* 1.99.8 : « Inviter un remplaçant » — 2 places par cabinet. Une place est prise par :
+     - une invitation en attente (créée, ni utilisée, ni révoquée) ;
+     - une invitation utilisée par une personne qui n’a pas été retirée (et qui n’est pas administrateur).
+     Une place se libère quand l’invitation en attente est révoquée (annulation) ou quand la personne est retirée. */
+  var REMP_MAX = 2;
+  function rempSeatsUsed() {
+    ensureTx();
+    var n = 0;
+    (state.invites || []).forEach(function (inv) {
+      if (!inv || !inv.code || isLegacyInvite(inv) || inv.revokedAt) return;
+      if (!inv.usedAt) { n++; return; }
+      var who = String(inv.usedBy || "");
+      if (who && (isBlockedName(who) || rosterRole(who) === "admin")) return;
+      n++;
+    });
+    return n;
+  }
+  function renderRempCount() {
+    var el = $("remp-count");
+    if (!el || !state) return;
+    var n = Math.min(rempSeatsUsed(), REMP_MAX);
+    el.textContent = "Remplaçants : " + n + " sur " + REMP_MAX + " (invitations en attente comprises).";
   }
 
   function liveInvites() {
@@ -5851,6 +5896,7 @@
   var inviteHistOpen = false;
 
   function renderInviteList() {
+    try { renderRempCount(); } catch (eR) {}
     var box = $("invite-list");
     if (!box) return;
     box.innerHTML = "";
@@ -5915,6 +5961,8 @@
     }
     renderInviteList();
     renderStaff();
+    renderRempCount();
+    if ($("invite-error")) $("invite-error").hidden = true;
     if ($("modal-staff")) $("modal-staff").hidden = false;
     /* Plus de création automatique : l’admin indique d’abord « Pour qui ? », puis « Créer une invitation ». */
     if (create && $("invite-for")) setTimeout(function () { try { $("invite-for").focus(); } catch (eF) {} }, 150);
@@ -5935,6 +5983,7 @@
     if ($("modal-beta")) $("modal-beta").hidden = true;
   });
   if ($("btn-beta-enter")) $("btn-beta-enter").addEventListener("click", function () {
+    essaiShowScreen(); return;
     if ($("beta-error")) $("beta-error").hidden = true;
     if ($("beta-key-input")) $("beta-key-input").value = "";
     showScreen("screen-beta");
@@ -12139,7 +12188,8 @@
         try { sessionStorage.setItem(SS_TRIAL_ACT, h.slice(8)); } catch (eS) {}
         history.replaceState(null, "", location.pathname + location.search);
       } else if (h.indexOf("#ve=") === 0) {
-        pendingTrialLink = decodeURIComponent(h.slice(4));
+        /* 1.99.8 : anciens liens d’essai personnels → même écran que app.vydel.fr/essai */
+        essaiOpenedByLink = true;
         history.replaceState(null, "", location.pathname + location.search);
       }
     } catch (e) {}
@@ -12153,7 +12203,6 @@
         essaiOpenedByLink = true;
         var iv = h.indexOf("=") > 0 ? h.slice(h.indexOf("=") + 1).replace(/[^0-9a-z]/g, "").slice(0, 10) : "";
         try { if (iv) sessionStorage.setItem(SS_ESSAI_INV, iv); } catch (e1) {}
-        if ($("welcome-essai")) $("welcome-essai").hidden = false;
         history.replaceState(null, "", location.pathname + location.search);
       } else if (h.indexOf("#abo=") === 0) {
         if (h === "#abo=ok") { try { localStorage.setItem(SS_ABO_WAIT, String(Date.now())); } catch (e2) {} }

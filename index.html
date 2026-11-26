@@ -77,18 +77,30 @@
       </div>
     </section>
 
+    <!-- Essai de 14 jours (1.99.8) : écran unique d’arrivée, pour le lien app.vydel.fr/essai (site et menu « Proposer l’essai 14 jours »)
+         comme pour « Proposer l’essai 14 jours » sur l’accueil -->
+    <section id="screen-essai" class="screen" hidden>
+      <div class="splash">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.8-app" alt="">
+        <h1>Essai gratuit de 14 jours</h1>
+        <p class="lede">Voici la nouvelle application Vydel : la checklist du jour pour IDEL. Essayez-la pendant 14 jours ; si elle vous plaît, vous pourrez souscrire à l’abonnement (14,99 € par mois).</p>
+        <p class="hint">Vous allez créer votre propre cabinet, protégé par un PIN de 6 chiffres.</p>
+        <p id="essai-error" class="error" hidden></p>
+        <button type="button" class="btn btn-primary" id="btn-essai-go">Commencer mon essai</button>
+        <button type="button" class="btn btn-ghost" id="btn-essai-back">Retour</button>
+      </div>
+    </section>
+
     <!-- Accueil -->
     <section id="screen-welcome" class="screen" hidden>
       <div class="splash">
         <img class="splash-icon" src="./icons/icon-192.png?v=1.99.8-app" alt="">
         <h1 id="welcome-title">Vydel</h1>
         <p class="lede">Checklist du jour pour IDEL. Pas un dossier médical — uniquement le passage.</p>
-        <p class="hint welcome-essai" id="welcome-essai" hidden>Votre essai gratuit de 14 jours vous attend : touchez « Tester Vydel 14 jours » pour créer votre cabinet.</p>
-        <button type="button" class="btn btn-primary" id="btn-create">Tester Vydel 14 jours</button>
+        <button type="button" class="btn btn-primary" id="btn-create">Proposer l’essai 14 jours</button>
         <button type="button" class="btn btn-ghost" id="btn-join">Rejoindre le cabinet</button>
-        <button type="button" class="btn btn-ghost" id="btn-beta-enter">J’ai reçu un essai</button>
         <button type="button" class="btn btn-ghost" id="btn-install" hidden>Installer l’appli</button>
-        <p class="hint">Nouveau : « Tester Vydel 14 jours » crée ton propre cabinet (PIN de 6 chiffres). Collègue d’un cabinet : Rejoindre + PIN.</p>
+        <p class="hint">Nouveau : « Proposer l’essai 14 jours » crée ton propre cabinet (PIN de 6 chiffres). Collègue d’un cabinet : Rejoindre + PIN.</p>
         <p class="hint">iPhone : dans Safari, bouton Partager (carré avec une flèche) → Sur l’écran d’accueil → Ajouter. Android : Chrome → Installer.</p>
         <p class="hint copy" id="welcome-copy">© 2026 Orva Labs</p>
       </div>
@@ -519,10 +531,10 @@
       <button type="button" class="btn btn-ghost" id="btn-retry-share" hidden>Réessayer le partage</button>
       <button type="button" class="btn btn-ghost" id="btn-change-pin" hidden>Changer le PIN</button>
       <button type="button" class="btn btn-ghost" id="btn-mon-prenom">Mon prénom</button>
-      <button type="button" class="btn btn-ghost" id="btn-invite-menu" hidden>Ajouter un membre</button>
+      <button type="button" class="btn btn-ghost" id="btn-invite-menu" hidden>Inviter un remplaçant</button>
       <button type="button" class="btn btn-ghost" id="btn-staff" hidden>Personnes du cabinet</button>
       <button type="button" class="btn btn-ghost" id="btn-secu" hidden>Sécuriser le cabinet</button>
-      <button type="button" class="btn btn-ghost" id="btn-beta-mint" hidden>Offrir un essai</button>
+      <button type="button" class="btn btn-ghost" id="btn-beta-mint" hidden>Proposer l’essai 14 jours</button>
       <button type="button" class="btn btn-ghost" id="btn-feedback">Question SAV</button>
       <button type="button" class="btn btn-ghost" id="btn-tuto">Revoir le tuto</button>
       <details id="menu-aide" class="menu-archives">
@@ -600,29 +612,16 @@
     </div>
   </div>
 
-  <!-- Offrir un essai (administrateurs) -->
+  <!-- Proposer l’essai 14 jours (administrateurs) : lien unique app.vydel.fr/essai -->
   <div id="modal-beta" class="modal" hidden>
     <div class="sheet" role="dialog" aria-labelledby="beta-title">
-      <h2 id="beta-title">Offrir un essai</h2>
+      <h2 id="beta-title">Proposer l’essai 14 jours</h2>
       <p class="hint" id="essai-link-hint">Votre lien d’essai, à envoyer par SMS, WhatsApp ou e-mail. Chaque personne qui l’ouvre démarre son propre essai de 14 jours.</p>
       <p class="mono" id="essai-link">https://app.vydel.fr/essai</p>
       <div class="row-btns" id="essai-link-actions">
         <button type="button" class="btn btn-primary" id="btn-essai-copy">Copier le lien d’essai</button>
         <button type="button" class="btn btn-ghost" id="btn-essai-share" hidden>Partager</button>
       </div>
-      <h3 class="membres-h">Ou une invitation à son prénom</h3>
-      <label for="trial-to" class="invite-for-label">Prénom de l’IDEL invitée</label>
-      <input id="trial-to" maxlength="24" autocomplete="off" autocapitalize="words" placeholder="Prénom (ex. Julie)">
-      <button type="button" class="btn btn-primary" id="btn-beta-gen">Offrir un essai de 14 jours</button>
-      <p class="hint" id="trial-sub">Pour faire découvrir Vydel à une autre IDEL. L'accès est personnel et vous pouvez l'annuler à tout moment.</p>
-      <p id="trial-error" class="error" hidden></p>
-      <p id="beta-preview" class="invite-preview" hidden></p>
-      <div class="row-btns" id="beta-actions" hidden>
-        <button type="button" class="btn btn-ghost" id="btn-beta-copy">Copier</button>
-        <button type="button" class="btn btn-primary" id="btn-beta-share">Envoyer</button>
-      </div>
-      <h3 class="membres-h">Essais envoyés</h3>
-      <div id="trial-list" class="staff-list"></div>
       <button type="button" class="btn btn-ghost" id="btn-close-beta">Fermer</button>
     </div>
   </div>
@@ -644,11 +643,13 @@
         <button type="button" class="btn btn-primary" id="btn-seat-add">Ajouter</button>
         <p id="seat-count" class="hint"></p>
       </div>
-      <h3 class="membres-h">Ajouter un membre</h3>
+      <h3 class="membres-h">Inviter un remplaçant</h3>
+      <p class="hint" id="remp-count"></p>
       <p class="hint">Génère une invitation à envoyer (WhatsApp, SMS…). Le PIN se donne en personne, jamais dans le message.</p>
       <label for="invite-for" class="invite-for-label">Pour qui ? (facultatif)</label>
       <input id="invite-for" maxlength="24" autocomplete="off" autocapitalize="words" placeholder="Prénom (ex. Léa)">
       <button type="button" class="btn btn-primary" id="btn-invite">Créer une invitation</button>
+      <p id="invite-error" class="error" hidden></p>
       <p id="invite-preview" class="invite-preview" hidden></p>
       <div class="row-btns" id="invite-actions" hidden>
         <button type="button" class="btn btn-ghost" id="btn-invite-copy">Copier</button>

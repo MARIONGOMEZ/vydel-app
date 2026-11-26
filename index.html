@@ -9,15 +9,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Vydel">
   <meta name="description" content="Checklist Vydel pour IDEL. Pas un dossier médical.">
-  <meta name="tournee-version" content="1.99.2-app">
+  <meta name="tournee-version" content="1.99.3-app">
   <!-- Vydel v1 -->
   <title>Vydel</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="manifest" href="./manifest.json">
-  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=1.99.2-app">
-  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=1.99.2-app">
-  <link rel="stylesheet" href="./css/leaflet.css?v=1.99.2-app">
-  <link rel="stylesheet" href="./css/app.css?v=1.99.2-app">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=1.99.3-app">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=1.99.3-app">
+  <link rel="stylesheet" href="./css/leaflet.css?v=1.99.3-app">
+  <link rel="stylesheet" href="./css/app.css?v=1.99.3-app">
 </head>
 <body>
   <div id="app">
@@ -25,7 +25,7 @@
     <!-- CGU -->
     <section id="screen-cgu" class="screen" hidden>
       <div class="form-screen cgu-screen">
-        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.2-app" alt="">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.3-app" alt="">
         <h1>Conditions d’utilisation</h1>
         <div class="cgu-body">
           <p>Vydel est une <strong>checklist de passages</strong> pour IDEL. Ce n’est <strong>pas un dossier médical</strong> : pas de diagnostic, pas de pathologie, pas de notes cliniques. Uniquement le passage du jour.</p>
@@ -55,7 +55,7 @@
           <h2 class="cgu-h" id="cgu-photos">Photos de documents</h2>
           <ul class="cgu-list">
             <li><strong>Des documents seulement, jamais de patients.</strong> Accès ou clé, ordonnance, carte vitale.</li>
-            <li id="cgu-photos-partage"><strong>Partagées avec tous les membres du cabinet (associés et remplaçants).</strong> Elles circulent chiffrées de bout en bout par des relais publics, sans y être gardées, et ne sont jamais en clair, ni sur les relais ni dans le stockage des téléphones. Elles s’effacent automatiquement : à la fin de l’ordonnance pour une photo d’ordonnance, au bout de 90 jours pour les autres. L’accès est protégé par le PIN du cabinet et le contenu est chiffré de bout en bout avec la clé du cabinet. Chaque téléphone du cabinet en garde une copie chiffrée. Un cabinet pas encore sécurisé les garde sur le seul téléphone qui les a prises.</li>
+            <li id="cgu-photos-partage"><strong>Partagées avec tous les membres du cabinet (associés et remplaçants).</strong> Elles sont chiffrées sur le téléphone, puis circulent par des relais publics sans y être gardées, et ne sont jamais en clair, ni sur les relais ni dans le stockage des téléphones. Elles s’effacent automatiquement : à la fin de l’ordonnance pour une photo d’ordonnance, au bout de 90 jours pour les autres. L’accès est protégé par le PIN du cabinet et le contenu est chiffré sur le téléphone avec la clé du cabinet. Chaque téléphone du cabinet en garde une copie chiffrée. Un cabinet pas encore sécurisé les garde sur le seul téléphone qui les a prises.</li>
             <li><strong>Une photo n’arrive que si un téléphone qui l’a est en ligne en même temps.</strong> Il n’y a pas de serveur qui les stocke.</li>
             <li><strong>Effacées automatiquement sur tous les téléphones.</strong> Une photo d’ordonnance reste jusqu’à la date de fin de l’ordonnance indiquée sur la fiche du patient (la plus tardive s’il y en a deux), puis elle est effacée ; si cette date est modifiée, l’effacement suit. Sans date de fin, elle est effacée au bout de 90 jours. Les photos d’accès ou de carte vitale sont effacées au bout de 90 jours, ou à la fin de l’ordonnance si elle arrive avant. Une photo supprimée l’est partout. Un téléphone resté éteint l’efface à sa prochaine ouverture.</li>
             <li>Une capture d’écran ou une sauvegarde du téléphone échappe à cet effacement : évitez-les.</li>
@@ -72,7 +72,7 @@
     <!-- Accueil -->
     <section id="screen-welcome" class="screen" hidden>
       <div class="splash">
-        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.2-app" alt="">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.3-app" alt="">
         <h1 id="welcome-title">Vydel</h1>
         <p class="lede">Checklist du jour pour IDEL. Pas un dossier médical — uniquement le passage.</p>
         <button type="button" class="btn btn-primary" id="btn-create">Tester Vydel 14 jours</button>
@@ -88,7 +88,7 @@
     <!-- Code PIN (création / confirmation / déverrouillage) -->
     <section id="screen-pin" class="screen" hidden>
       <div class="pin-wrap">
-        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.2-app" alt="">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.3-app" alt="">
         <h1>Vydel</h1>
         <p id="pin-title" class="lede">Code PIN</p>
         <p id="pin-hint" class="hint">4 à 6 chiffres, partagé entre associées.</p>
@@ -146,7 +146,7 @@
       <div class="app-head">
         <header class="topbar">
           <button type="button" class="icon-btn" id="btn-menu" aria-label="Menu">
-            <img class="topbar-logo" src="./icons/icon-192.png?v=1.99.2-app" alt="">
+            <img class="topbar-logo" src="./icons/icon-192.png?v=1.99.3-app" alt="">
           </button>
           <div class="topbar-title">
             <div class="topbar-brand">
@@ -962,10 +962,10 @@
 
 <div id="toast" class="toast" hidden role="status"></div>
 
-  <script src="./js/leaflet.js?v=1.99.2-app"></script>
-  <script src="./js/mqtt.min.js?v=1.99.2-app"></script>
-  <script src="./js/mqtt-lite.js?v=1.99.2-app"></script>
-  <script src="./js/import.js?v=1.99.2-app"></script>
-  <script src="./js/app.js?v=1.99.2-app" defer></script>
+  <script src="./js/leaflet.js?v=1.99.3-app"></script>
+  <script src="./js/mqtt.min.js?v=1.99.3-app"></script>
+  <script src="./js/mqtt-lite.js?v=1.99.3-app"></script>
+  <script src="./js/import.js?v=1.99.3-app"></script>
+  <script src="./js/app.js?v=1.99.3-app" defer></script>
 </body>
 </html>

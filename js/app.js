@@ -21,7 +21,7 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.2-app";
+  var APP_VER = "1.99.3-app";
   var CGU_VER = "8"; /* 8 : section « Chiffrement de vos données » (1.91) — fait relire les CGU */
 
   var $ = function (id) { return document.getElementById(id); };
@@ -3534,7 +3534,7 @@
     });
     $("menu-blob").textContent = (meta && meta.blobId) ? meta.blobId : "Pas encore attribué";
     $("menu-share").textContent = (meta && meta.shareOk)
-      ? (secu ? "🔒 Cabinet sécurisé · données chiffrées de bout en bout" : "Partage actif. Les autres téléphones rejoignent avec le même PIN.")
+      ? (secu ? "🔒 Cabinet sécurisé · données chiffrées sur le téléphone" : "Partage actif. Les autres téléphones rejoignent avec le même PIN.")
       : ("Partage indisponible, données sur ce téléphone" + (meta && meta.shareErr ? " (" + meta.shareErr + ")" : ""));
     $("btn-retry-share").hidden = !!(meta && meta.shareOk && meta.blobId);
     updateMsgBadge();
@@ -7101,7 +7101,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.2-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.3-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 

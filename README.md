@@ -6,4 +6,4 @@ Copie publique de l’appli Vydel pour l’essai gratuit de 14 jours, servie sur
 - « Rejoindre le cabinet » : collègue d’un cabinet existant, avec le PIN (et le lien d’invitation si reçu).
 - Vydel est une checklist de passages pour IDEL, pas un dossier médical : pas de notes cliniques.
 
-Version : 1.99.2-app. © 2026 Orva Labs.
+Version : 1.99.3-app. © 2026 Orva Labs.

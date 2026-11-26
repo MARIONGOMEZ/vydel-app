@@ -4,6 +4,7 @@ Copie publique de l’appli Vydel pour l’essai gratuit de 14 jours, servie sur
 
 - Accueil : « Tester Vydel 14 jours » crée un cabinet (PIN de 6 chiffres) et démarre un essai de 14 jours daté de la création. Statut et date de fin dans le menu. Rien n’est bloqué à la fin de l’essai pour l’instant.
 - « Rejoindre le cabinet » : collègue d’un cabinet existant, avec le PIN (et le lien d’invitation si reçu).
+- Notifications (1.99.4) : menu → « Activer les notifications » ; « Nouvelle transmission dans ton cabinet » / « Nouveau message dans ton cabinet », sans nom ni texte. Serveur d’envoi : https://vydel-push.vydel-push.workers.dev (Cloudflare Worker). iPhone : iOS 16.4+, appli ajoutée à l’écran d’accueil.
 - Vydel est une checklist de passages pour IDEL, pas un dossier médical : pas de notes cliniques.
 
-Version : 1.99.3-app. © 2026 Orva Labs.
+Version : 1.99.4-app. © 2026 Orva Labs.

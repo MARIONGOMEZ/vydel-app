@@ -1,21 +1,21 @@
 /* Vydel — cache de l’appli + veille du blob chiffré (aucun nom hors appareil). */
-const CACHE = "tournee-shell-1.99.3-app";
+const CACHE = "tournee-shell-1.99.4-app";
 const SHELL = [
   "./",
   "./index.html",
-  "./css/app.css?v=1.99.3-app",
+  "./css/app.css?v=1.99.4-app",
   "./css/leaflet.css",
-  "./css/leaflet.css?v=1.99.3-app",
+  "./css/leaflet.css?v=1.99.4-app",
   "./js/app.js",
-  "./js/app.js?v=1.99.3-app",
+  "./js/app.js?v=1.99.4-app",
   "./js/import.js",
-  "./js/import.js?v=1.99.3-app",
+  "./js/import.js?v=1.99.4-app",
   "./js/leaflet.js",
-  "./js/leaflet.js?v=1.99.3-app",
+  "./js/leaflet.js?v=1.99.4-app",
   "./js/mqtt.min.js",
-  "./js/mqtt.min.js?v=1.99.3-app",
+  "./js/mqtt.min.js?v=1.99.4-app",
   "./js/mqtt-lite.js",
-  "./js/mqtt-lite.js?v=1.99.3-app",
+  "./js/mqtt-lite.js?v=1.99.4-app",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -89,6 +89,47 @@ self.addEventListener("message", (event) => {
     }));
   }
   if (msg.type === "SKIP_WAIT") self.skipWaiting();
+});
+
+/* Notifications push (1.99.3) : le serveur n’envoie que le type ("tx" | "msg"), jamais de nom ni de texte. */
+const PUSH_TEXT = {
+  tx: "Nouvelle transmission dans ton cabinet",
+  msg: "Nouveau message dans ton cabinet"
+};
+self.addEventListener("push", (event) => {
+  let k = "";
+  try { k = (event.data && event.data.json() || {}).k || ""; } catch (e) {}
+  const body = PUSH_TEXT[k] || "Du nouveau dans ton cabinet";
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    clients.forEach((c) => {
+      try { c.postMessage({ type: k === "msg" ? "REMOTE_MSG" : "REMOTE_TX" }); } catch (e) {}
+    });
+    await self.registration.showNotification("Vydel", {
+      body: body,
+      icon: "./icons/icon-192.png",
+      badge: "./icons/icon-192.png",
+      tag: "tournee-push-" + (PUSH_TEXT[k] ? k : "x"),
+      renotify: true,
+      data: { k: k }
+    });
+    await bumpAppBadge();
+  })());
+});
+
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil((async () => {
+    const p = await idbGet("push");
+    if (!p || !p.g || !p.url) return;
+    const vk = await fetch(p.url + "/vapid", { cache: "no-store" }).then((r) => r.json());
+    const s = String(vk.k).replace(/-/g, "+").replace(/_/g, "/");
+    const bin = atob(s + "===".slice((s.length + 3) % 4));
+    const key = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) key[i] = bin.charCodeAt(i);
+    const sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    const j = sub.toJSON();
+    await fetch(p.url + "/sub", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ g: p.g, sub: { endpoint: j.endpoint, keys: j.keys } }) });
+  })().catch(() => {}));
 });
 
 self.addEventListener("notificationclick", (event) => {

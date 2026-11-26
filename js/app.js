@@ -21,7 +21,7 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.3-app";
+  var APP_VER = "1.99.4-app";
   var CGU_VER = "8"; /* 8 : section « Chiffrement de vos données » (1.91) — fait relire les CGU */
 
   var $ = function (id) { return document.getElementById(id); };
@@ -60,6 +60,10 @@
   var sessionPin = "";
   var lastPubCt = "";
   var mqttFlushTimer = null;
+  /* Notifications push (1.99.3) : adresse du petit serveur d’envoi (Cloudflare Worker). Vide = réglage masqué, rien n’est envoyé. */
+  var PUSH_URL = "https://vydel-push.vydel-push.workers.dev";
+  var PUSH_VAPID = "BEzJLLGAPGF3UPhtqinAH9sECdXsqX-q7whaeHyYhZ1Mo9mWZvPvgIMtKnVLeElPkGOpHT3Xg-_EBY2BOpBD6HQ"; /* clé PUBLIQUE VAPID du serveur */
+  var LS_PUSH = "tournee.push";
   var MQTT_URLS = ["wss://broker.hivemq.com:8884/mqtt", "wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt"];
   var voiceBlobs = {};
   var recMedia = null;
@@ -6265,6 +6269,146 @@
     showSysNotif(body);
   }
 
+  /* ---- Notifications push (Web Push) ----
+     Le serveur ne reçoit qu’un identifiant opaque du cabinet (HMAC de la clé du cabinet),
+     l’abonnement push du téléphone et le type d’événement ("tx" | "msg"). Aucun nom, aucun texte :
+     le texte affiché est fixe, dans sw.js. */
+  function pushSupported() {
+    return !!PUSH_URL && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  }
+  function pushIsStandalone() {
+    try { if (window.matchMedia("(display-mode: standalone)").matches) return true; } catch (e) {}
+    return window.navigator.standalone === true;
+  }
+  function pushIsIos() {
+    var ua = navigator.userAgent || "";
+    return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  }
+  function pushLoad() {
+    try { return JSON.parse(localStorage.getItem(LS_PUSH) || "null") || {}; } catch (e) { return {}; }
+  }
+  function pushSave(o) {
+    try { localStorage.setItem(LS_PUSH, JSON.stringify(o)); } catch (e) {}
+  }
+  async function pushGroupId() {
+    if (!secu || !secu.ckRaw || !crypto.subtle) return "";
+    var raw = secu.ckRaw instanceof Uint8Array ? secu.ckRaw : new Uint8Array(secu.ckRaw);
+    var hk = await crypto.subtle.importKey("raw", raw, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    var sig = new Uint8Array(await crypto.subtle.sign("HMAC", hk, new TextEncoder().encode("vydel-push-v1")));
+    var h = "";
+    for (var i = 0; i < sig.length; i++) h += ("0" + sig[i].toString(16)).slice(-2);
+    return h;
+  }
+  function pushPost(path, body, keepalive) {
+    return fetch(PUSH_URL + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      keepalive: !!keepalive,
+      cache: "no-store"
+    }).then(function (r) { if (!r.ok) throw new Error("push " + r.status); return r.json(); });
+  }
+  function pushB64uToU8(s) {
+    s = String(s).replace(/-/g, "+").replace(/_/g, "/");
+    var bin = atob(s + "===".slice((s.length + 3) % 4));
+    var u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return u8;
+  }
+  function refreshPushBtn() {
+    var b = $("btn-push");
+    if (!b) return;
+    b.hidden = !pushSupported() || !secu || isKicked();
+    b.textContent = pushLoad().on ? "Désactiver les notifications" : "Activer les notifications";
+  }
+  async function pushSubscribe() {
+    var g = await pushGroupId();
+    if (!g) throw new Error("cabinet");
+    var reg = await navigator.serviceWorker.ready;
+    var sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      var vk = PUSH_VAPID || (await fetch(PUSH_URL + "/vapid", { cache: "no-store" }).then(function (r) { return r.json(); })).k;
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushB64uToU8(vk) });
+    }
+    var j = sub.toJSON();
+    await pushPost("/sub", { g: g, sub: { endpoint: j.endpoint, keys: j.keys } });
+    pushSave({ on: 1, g: g, endpoint: j.endpoint });
+    idbPut("push", { g: g, url: PUSH_URL });
+    return true;
+  }
+  async function pushEnable() {
+    if (pushIsIos() && !pushIsStandalone()) {
+      toast("Sur iPhone, ajoute d’abord Vydel à l’écran d’accueil, puis ouvre-la depuis l’icône.");
+      return;
+    }
+    var perm = Notification.permission;
+    if (perm !== "granted") perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      toast("Notifications refusées. Autorise-les dans les réglages du téléphone.");
+      return;
+    }
+    try {
+      await pushSubscribe();
+      toast("Notifications activées");
+    } catch (e) {
+      toast("Activation impossible pour l’instant. Réessaie avec du réseau.");
+    }
+    refreshPushBtn();
+  }
+  async function pushDisable() {
+    var st = pushLoad();
+    try {
+      var reg = await navigator.serviceWorker.ready;
+      var sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+    } catch (e) {}
+    if (st.g && st.endpoint) pushPost("/unsub", { g: st.g, endpoint: st.endpoint }).catch(function () {});
+    pushSave({ on: 0 });
+    idbDel("push");
+    toast("Notifications désactivées");
+    refreshPushBtn();
+  }
+  /* Après déverrouillage : si la clé du cabinet a changé (sécurisation), on se réabonne au bon cabinet. */
+  var pushChecked = false;
+  async function pushRefresh() {
+    if (pushChecked || !pushSupported() || !unlocked) return;
+    var st = pushLoad();
+    if (!st.on || Notification.permission !== "granted") return;
+    pushChecked = true;
+    try {
+      var g = await pushGroupId();
+      if (g && g !== st.g) await pushSubscribe();
+    } catch (e) { pushChecked = false; }
+  }
+  /* Prévenir les autres téléphones du cabinet. Contenu générique uniquement : "tx" ou "msg". */
+  var pushQueue = {};
+  var pushTimer = null;
+  function pushPing(kind) {
+    if (!pushSupported() || !unlocked || !secu || isKicked()) return;
+    pushQueue[kind] = 1;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushFlush, 1500);
+  }
+  async function pushFlush() {
+    var kinds = Object.keys(pushQueue);
+    if (!kinds.length) return;
+    if (navigator.onLine === false) return; /* repart à l’événement « online » */
+    var g;
+    try { g = await pushGroupId(); } catch (e) { return; }
+    if (!g) return;
+    var me = pushLoad().endpoint || "";
+    kinds.forEach(function (k) {
+      delete pushQueue[k];
+      pushPost("/notify", { g: g, k: k, x: me }, true).catch(function () { pushQueue[k] = 1; });
+    });
+  }
+  window.addEventListener("online", function () { setTimeout(pushFlush, 3000); });
+  if ($("btn-push")) $("btn-push").addEventListener("click", function () {
+    $("modal-menu").hidden = true;
+    if (pushLoad().on) pushDisable(); else pushEnable();
+  });
+  if ($("btn-menu")) $("btn-menu").addEventListener("click", refreshPushBtn);
+
   function showSysNotif(body, tag) {
     if (!("Notification" in window)) return;
     if (Notification.permission !== "granted") return;
@@ -7045,6 +7189,8 @@
 
   function syncWatchToIdb() {
     if (!unlocked || !key || !meta) return;
+    refreshPushBtn();
+    pushRefresh();
     idbPut("cryptoKey", key);
     idbPut("watch", {
       blobId: meta.blobId || null,
@@ -7101,7 +7247,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.3-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.4-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 
@@ -7717,6 +7863,7 @@
     }
     if (el) el.value = "";
     persist(true);
+    pushPing("msg");
     renderMessages();
   }
 
@@ -7757,6 +7904,7 @@
       state.messages = state.messages.slice(state.messages.length - 300);
     }
     persist(true);
+    pushPing("msg");
     renderMessages();
     return m;
   }
@@ -8586,6 +8734,7 @@
       });
       bumpDayTx(day);
       persist(true);
+      pushPing("tx");
       renderTransmissions();
       toast("Vocal ajouté");
     });
@@ -10291,6 +10440,7 @@
     bumpDayTx(day);
     closeTxRapide();
     persist(true);
+    pushPing("tx");
     syncWatchToIdb();
     renderTransmissions();
     if (currentTab !== "transmissions") updateTxBadge();
@@ -10460,6 +10610,7 @@
     txReplyDay = "";
     bumpDayTx(day);
     persist(true);
+    pushPing("tx");
     syncWatchToIdb();
     renderTransmissions();
     txSending = false;
@@ -10499,6 +10650,7 @@
     bumpDayTx(day);
     if (el) el.value = "";
     persist(true);
+    pushPing("tx");
     syncWatchToIdb();
     renderTransmissions();
     txSending = false;

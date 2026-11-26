@@ -9,15 +9,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Vydel">
   <meta name="description" content="Checklist Vydel pour IDEL. Pas un dossier médical.">
-  <meta name="tournee-version" content="1.99.3-app">
+  <meta name="tournee-version" content="1.99.4-app">
   <!-- Vydel v1 -->
   <title>Vydel</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="manifest" href="./manifest.json">
-  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=1.99.3-app">
-  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=1.99.3-app">
-  <link rel="stylesheet" href="./css/leaflet.css?v=1.99.3-app">
-  <link rel="stylesheet" href="./css/app.css?v=1.99.3-app">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=1.99.4-app">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=1.99.4-app">
+  <link rel="stylesheet" href="./css/leaflet.css?v=1.99.4-app">
+  <link rel="stylesheet" href="./css/app.css?v=1.99.4-app">
 </head>
 <body>
   <div id="app">
@@ -25,7 +25,7 @@
     <!-- CGU -->
     <section id="screen-cgu" class="screen" hidden>
       <div class="form-screen cgu-screen">
-        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.3-app" alt="">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.4-app" alt="">
         <h1>Conditions d’utilisation</h1>
         <div class="cgu-body">
           <p>Vydel est une <strong>checklist de passages</strong> pour IDEL. Ce n’est <strong>pas un dossier médical</strong> : pas de diagnostic, pas de pathologie, pas de notes cliniques. Uniquement le passage du jour.</p>
@@ -72,7 +72,7 @@
     <!-- Accueil -->
     <section id="screen-welcome" class="screen" hidden>
       <div class="splash">
-        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.3-app" alt="">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.4-app" alt="">
         <h1 id="welcome-title">Vydel</h1>
         <p class="lede">Checklist du jour pour IDEL. Pas un dossier médical — uniquement le passage.</p>
         <button type="button" class="btn btn-primary" id="btn-create">Tester Vydel 14 jours</button>
@@ -88,7 +88,7 @@
     <!-- Code PIN (création / confirmation / déverrouillage) -->
     <section id="screen-pin" class="screen" hidden>
       <div class="pin-wrap">
-        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.3-app" alt="">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.4-app" alt="">
         <h1>Vydel</h1>
         <p id="pin-title" class="lede">Code PIN</p>
         <p id="pin-hint" class="hint">4 à 6 chiffres, partagé entre associées.</p>
@@ -146,7 +146,7 @@
       <div class="app-head">
         <header class="topbar">
           <button type="button" class="icon-btn" id="btn-menu" aria-label="Menu">
-            <img class="topbar-logo" src="./icons/icon-192.png?v=1.99.3-app" alt="">
+            <img class="topbar-logo" src="./icons/icon-192.png?v=1.99.4-app" alt="">
           </button>
           <div class="topbar-title">
             <div class="topbar-brand">
@@ -520,6 +520,7 @@
       <button type="button" class="btn btn-primary" id="btn-menu-update">Mettre à jour</button>
       <button type="button" class="btn btn-ghost" id="btn-new-day" hidden>Nouvelle journée</button>
       <button type="button" class="btn btn-ghost" id="btn-ask-notif">Notifications</button>
+      <button type="button" class="btn btn-ghost" id="btn-push" hidden>Activer les notifications</button>
       <button type="button" class="btn btn-ghost" id="btn-lock-2" hidden>Verrouiller</button>
       <button type="button" class="btn btn-ghost" id="btn-cgu">Conditions d’utilisation</button>
       <details id="menu-archives" class="menu-archives" hidden>
@@ -962,10 +963,10 @@
 
 <div id="toast" class="toast" hidden role="status"></div>
 
-  <script src="./js/leaflet.js?v=1.99.3-app"></script>
-  <script src="./js/mqtt.min.js?v=1.99.3-app"></script>
-  <script src="./js/mqtt-lite.js?v=1.99.3-app"></script>
-  <script src="./js/import.js?v=1.99.3-app"></script>
-  <script src="./js/app.js?v=1.99.3-app" defer></script>
+  <script src="./js/leaflet.js?v=1.99.4-app"></script>
+  <script src="./js/mqtt.min.js?v=1.99.4-app"></script>
+  <script src="./js/mqtt-lite.js?v=1.99.4-app"></script>
+  <script src="./js/import.js?v=1.99.4-app"></script>
+  <script src="./js/app.js?v=1.99.4-app" defer></script>
 </body>
 </html>

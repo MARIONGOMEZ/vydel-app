@@ -2,18 +2,42 @@
 (function () {
   "use strict";
 
-  var LS_META = "tournee.meta";
-  var LS_ENC = "tournee.enc";
+  /* —— Multi-cabinets (étape 2) : la page est liée à UN cabinet, choisi avant le PIN. ——
+     Le cabinet principal (celui qui était déjà sur le téléphone) garde ses clés d’origine.
+     Un autre cabinet utilise les mêmes noms suffixés par son id (tournee.meta2.<id>…, base locale tournee-idb.<id>).
+     Ouvrir un autre cabinet recharge la page : mémoire, connexion MQTT et clés repartent de zéro. */
+  var CAB_MAIN = "principal";
+  var SS_CAB_PICK = "tournee.cabPick";
+  var CAB_PICKED = false; /* choix fait pendant cette session (sinon la liste s’affiche à l’ouverture) */
+  var CAB_BOUND = (function () {
+    try {
+      var id = sessionStorage.getItem(SS_CAB_PICK) || "";
+      if (!id) return CAB_MAIN;
+      if (id === CAB_MAIN) { CAB_PICKED = true; return CAB_MAIN; }
+      if (!/^[0-9a-f]{12}$/.test(id)) return CAB_MAIN;
+      var r = JSON.parse(localStorage.getItem("tournee.cabinets") || "null");
+      var ok = !!(r && Array.isArray(r.list) && r.list.some(function (c) { return c && c.id === id && c.kind !== "archive" && !c.refused; }));
+      if (ok && (localStorage.getItem("tournee.meta2." + id) || localStorage.getItem("tournee.meta." + id))) { CAB_PICKED = true; return id; }
+    } catch (e) {}
+    return CAB_MAIN;
+  })();
+  function cabLs(base) { return CAB_BOUND === CAB_MAIN ? base : base + "." + CAB_BOUND; }
+
+  var LS_META = cabLs("tournee.meta");
+  var LS_ENC = cabLs("tournee.enc");
   var LS_INSTALL = "tournee.installHide";
   var LS_SHARE_BANNER = "tournee.shareHide";
   var LS_NOTIF_ASKED = "tournee.notifAsked";
   var LS_CGU = "tournee.cguAccepted";
   var LS_NAME = "tournee.displayName";
-  var LS_MSG_SEEN = "tournee.msgSeen";
-  var LS_TX_SEEN = "tournee.txSeen";
+  var LS_MSG_SEEN = cabLs("tournee.msgSeen");
+  var LS_TX_SEEN = cabLs("tournee.txSeen");
+  var LS_DRAFT = cabLs("tournee.draft");
+  var LS_ORDO_BANNER = cabLs("tournee.ordoBannerHide");
+  var LS_ORDO_NOTIF = cabLs("tournee.ordoNotif");
   var LS_TUTO = "tournee.tutoSeen";
   var LS_NAV_APP = "tournee-nav-app";
-  var IDB_NAME = "tournee-idb";
+  var IDB_NAME = CAB_BOUND === CAB_MAIN ? "tournee-idb" : "tournee-idb." + CAB_BOUND;
   var JSONBLOB = "https://jsonblob.com/api/jsonBlob";
   var JSONSTORAGE = "https://api.jsonstorage.net/v1/json";
   var MAX_FAMILLE = 10;
@@ -21,7 +45,7 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.7-app";
+  var APP_VER = "1.99.9-app";
   var CGU_VER = "9"; /* 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
@@ -696,8 +720,8 @@
   }
 
   function showScreen(id) {
-    ["screen-welcome", "screen-pin", "screen-join", "screen-beta", "screen-app", "screen-cgu"].forEach(function (s) {
-      $(s).hidden = s !== id;
+    ["screen-welcome", "screen-pin", "screen-join", "screen-beta", "screen-app", "screen-cgu", "screen-cabs"].forEach(function (s) {
+      if ($(s)) $(s).hidden = s !== id;
     });
   }
 
@@ -713,6 +737,7 @@
     var el = $("pin-dots");
     el.innerHTML = "";
     var n = isCreatePinMode() ? NEW_CABINET_PIN_LEN : Math.max(4, pinBuf.length);
+    if (pinMode === "unlock" && boundPinLen() === NEW_CABINET_PIN_LEN) n = NEW_CABINET_PIN_LEN; /* nouveau cabinet : 6 points */
     if (n > 6) n = 6;
     for (var i = 0; i < n; i++) {
       var s = document.createElement("span");
@@ -722,6 +747,7 @@
   }
 
   function openPin(mode, title, hint) {
+    resetPinTheme();
     pinMode = mode;
     pinBuf = "";
     $("pin-title").textContent = title;
@@ -843,7 +869,7 @@
     pinBuf = "";
     if (String(pinMode).indexOf("rec-") === 0) {
       recCkPending = null;
-      openPin("unlock", "Code PIN", "Saisissez le PIN du cabinet.");
+      openBoundPin();
       return;
     }
     if (String(pinMode).indexOf("change") === 0 && unlocked) {
@@ -918,7 +944,11 @@
     $("join-pin").value = "";
     showScreen("screen-join");
   });
-  $("btn-join-back").addEventListener("click", function () { showScreen("screen-welcome"); });
+  $("btn-join-back").addEventListener("click", function () {
+    /* Multi-cabinets : depuis une invitation reçue sur un téléphone qui a déjà son cabinet, retour à ce cabinet. */
+    if (joinAsExtra) { joinAsExtra = false; pendingInvite = null; continueAfterCgu(); return; }
+    showScreen("screen-welcome");
+  });
   $("btn-join-go").addEventListener("click", joinCabinet);
 
 
@@ -1136,8 +1166,8 @@
   /* —— Sécurité v2 (1.91) : clé cabinet aléatoire + sujet aléatoire ——
      Le PIN ne sert plus qu’à déverrouiller CE téléphone (il emballe la clé localement).
      Ancien sujet (dérivé du PIN) gardé en « pont » pendant la transition, puis vidé. */
-  var LS_META2 = "tournee.meta2";
-  var LS_ENC2 = "tournee.enc2";
+  var LS_META2 = cabLs("tournee.meta2");
+  var LS_ENC2 = cabLs("tournee.enc2");
   var WRAP_ITERS = 600000;
   var SECU_GRACE_MS = 14 * 86400000;
   var secu = null; /* { topic, ck, ckRaw, at, old: { topic, salt, key, raw } | null, closed } */
@@ -1157,6 +1187,335 @@
     try { var m = JSON.parse(localStorage.getItem(LS_META2) || "null"); return m && m.v === 2 && m.topic && m.wrap ? m : null; } catch (e) { return null; }
   }
   function saveMeta2(m) { localStorage.setItem(LS_META2, JSON.stringify(m)); }
+
+  /* —— Multi-cabinets, étape 1 : fondations (aucun écran nouveau) ——
+     Le cabinet déjà présent sur ce téléphone (« principal ») garde ses clés actuelles
+     (tournee.meta / tournee.meta2 / tournee.enc2 / tournee.enc) : aucune migration, aucun déplacement.
+     Tout AUTRE cabinet (invitation, création, ancien lien PIN) est rangé à part, sur des clés suffixées
+     (tournee.meta.<id>, tournee.meta2.<id>, tournee.enc2.<id>, tournee.enc.<id>), et inscrit dans
+     tournee.cabinets. tournee.active désigne le cabinet ouvert (toujours « principal » tant que l’écran
+     de liste n’existe pas). Aucun chemin n’écrit un autre cabinet sur les clés du cabinet principal,
+     et aucun chemin ne les efface. */
+  var LS_CABS = "tournee.cabinets";
+  var LS_ACTIVE = "tournee.active";
+  /* Noms de base (sans suffixe) : clés du cabinet principal ; « <base>.<id> » pour les autres. */
+  var CAB_BASES = ["tournee.meta", "tournee.meta2", "tournee.enc2", "tournee.enc"];
+  var CAB_ARCHIVE_MAX = 4;
+
+  function cabKey(base, id) { return (!id || id === CAB_MAIN) ? base : base + "." + id; }
+  function loadCabs() {
+    try {
+      var r = JSON.parse(localStorage.getItem(LS_CABS) || "null");
+      if (r && r.v === 1 && Array.isArray(r.list)) return r;
+    } catch (e) {}
+    return { v: 1, list: [] };
+  }
+  function saveCabs(r) { localStorage.setItem(LS_CABS, JSON.stringify(r)); }
+  function slotJson(base, id) { try { return JSON.parse(localStorage.getItem(cabKey(base, id)) || "null"); } catch (e) { return null; } }
+  /* Un cabinet (clé, PIN ou données) est présent dans l’emplacement id. */
+  function slotOccupied(id) {
+    try {
+      if (localStorage.getItem(cabKey("tournee.meta2", id)) || localStorage.getItem(cabKey("tournee.enc2", id)) || localStorage.getItem(cabKey("tournee.enc", id))) return true;
+      var mm = slotJson("tournee.meta", id);
+      return !!(mm && mm.pinHash);
+    } catch (e) { return true; }
+  }
+  function slotTopic(id) {
+    var m2 = slotJson("tournee.meta2", id);
+    if (m2 && m2.topic) return String(m2.topic);
+    var mm = slotJson("tournee.meta", id);
+    return (mm && mm.blobId) ? String(mm.blobId) : "";
+  }
+  /* Le téléphone contient déjà un cabinet : le nouveau va à part. */
+  function mainSlotOccupied() { return slotOccupied(CAB_BOUND) || slotOccupied(CAB_MAIN); }
+  function mainTopic() { return slotTopic(CAB_BOUND); }
+  /* Cabinet déjà présent sur ce téléphone pour ce sujet (archives exclues). */
+  function cabIdByTopic(t) {
+    if (!t) return "";
+    if (slotTopic(CAB_MAIN) === t) return CAB_MAIN;
+    if (slotTopic(CAB_BOUND) === t) return CAB_BOUND;
+    var hit = "";
+    loadCabs().list.forEach(function (c) { if (c && c.kind !== "archive" && !c.refused && c.topic === t) hit = hit || c.id; });
+    return hit;
+  }
+  /* Inscrit le cabinet principal dans le registre (sans toucher à ses clés) et suit le sujet du cabinet ouvert. */
+  function ensureCabRegistry() {
+    try {
+      var r = loadCabs();
+      var dirty = false;
+      if (slotOccupied(CAB_MAIN)) {
+        var t = slotTopic(CAB_MAIN);
+        var main = null;
+        r.list.forEach(function (c) { if (c && c.id === CAB_MAIN) main = c; });
+        if (!main) { r.list.unshift({ id: CAB_MAIN, kind: "principal", topic: t, color: "teal", at: Date.now() }); dirty = true; }
+        else if (t && main.topic !== t) { main.topic = t; dirty = true; }
+      }
+      if (CAB_BOUND !== CAB_MAIN) {
+        var tb = slotTopic(CAB_BOUND);
+        r.list.forEach(function (c) { if (c && c.id === CAB_BOUND && tb && c.topic !== tb) { c.topic = tb; dirty = true; } });
+      }
+      if (dirty) saveCabs(r);
+      if (slotOccupied(CAB_MAIN) && !localStorage.getItem(LS_ACTIVE)) localStorage.setItem(LS_ACTIVE, CAB_MAIN);
+    } catch (e) {}
+  }
+  function newCabId() {
+    var ids = {};
+    loadCabs().list.forEach(function (c) { if (c && c.id) ids[c.id] = true; });
+    var id;
+    do { id = randHex(6); } while (ids[id] || id === CAB_MAIN);
+    return id;
+  }
+  /* Range un cabinet à part (clés suffixées) et l’inscrit, sans le rendre actif. Tout ou rien.
+     items : { "tournee.meta": …, "tournee.meta2": …, "tournee.enc2": …, "tournee.enc": … } (objets ou textes). */
+  function addSideCabinet(info, items) {
+    ensureCabRegistry();
+    var r = loadCabs();
+    var id = "";
+    if (info.topic && info.kind !== "archive") {
+      r.list.forEach(function (c) { if (c && c.id !== CAB_MAIN && c.kind !== "archive" && c.topic === info.topic) id = c.id; });
+    }
+    if (!id) id = newCabId();
+    if (id === CAB_MAIN) throw new Error("slot");
+    var written = [];
+    var before = {};
+    try {
+      CAB_BASES.forEach(function (base) {
+        if (items[base] == null) return;
+        var k = cabKey(base, id);
+        if (k === base || CAB_BASES.indexOf(k) !== -1) throw new Error("slot");
+        before[k] = localStorage.getItem(k);
+        localStorage.setItem(k, typeof items[base] === "string" ? items[base] : JSON.stringify(items[base]));
+        written.push(k);
+      });
+      var entry = null;
+      r.list.forEach(function (c) { if (c && c.id === id) entry = c; });
+      if (!entry) { entry = { id: id }; r.list.push(entry); }
+      entry.kind = info.kind || "invitation";
+      entry.topic = info.topic || "";
+      if (entry.kind !== "archive" && !entry.color) entry.color = nextCabColor(r.list);
+      if (info.pinLen) entry.pinLen = info.pinLen;
+      entry.at = Date.now();
+      if (info.name) entry.name = String(info.name).slice(0, 40);
+      if (info.inviteCode) entry.inviteCode = info.inviteCode;
+      if (info.from) entry.from = info.from;
+      entry.keys = written.slice();
+      /* Archives (copies d’avant bascule) : on n’en garde que les plus récentes, jamais le cabinet principal. */
+      var arch = r.list.filter(function (c) { return c && c.kind === "archive" && c.id !== CAB_MAIN; });
+      var drop = arch.length > CAB_ARCHIVE_MAX ? arch.slice(0, arch.length - CAB_ARCHIVE_MAX) : [];
+      saveCabs({ v: 1, list: r.list.filter(function (c) { return drop.indexOf(c) === -1; }) });
+      drop.forEach(function (c) {
+        CAB_BASES.forEach(function (base) {
+          var k = cabKey(base, c.id);
+          if (k !== base && CAB_BASES.indexOf(k) === -1) { try { localStorage.removeItem(k); } catch (eD) {} }
+        });
+      });
+      if (!localStorage.getItem(LS_ACTIVE) && slotOccupied(CAB_MAIN)) localStorage.setItem(LS_ACTIVE, CAB_MAIN);
+    } catch (e) {
+      written.forEach(function (k) {
+        try { if (before[k] == null) localStorage.removeItem(k); else localStorage.setItem(k, before[k]); } catch (eR) {}
+      });
+      throw e;
+    }
+    return id;
+  }
+  /* Copie octet pour octet des clés du cabinet principal (avant une bascule du même cabinet). */
+  function archiveMainSlot(from, withData) {
+    var items = {};
+    var any = false;
+    CAB_BASES.forEach(function (base) {
+      if (!withData && (base === "tournee.enc2" || base === "tournee.enc")) return;
+      var v = localStorage.getItem(cabKey(base, CAB_BOUND));
+      if (v != null) { items[base] = v; any = true; }
+    });
+    if (!any) return "";
+    return addSideCabinet({ kind: "archive", topic: mainTopic(), from: from || "" }, items);
+  }
+  function sideCabErr(code) {
+    var e = new Error(code);
+    e.code = code;
+    return e;
+  }
+  var SIDE_CAB_MSG = "Ce téléphone est déjà dans un cabinet. Le nouveau cabinet est gardé à part sur ce téléphone, sans rien changer au vôtre.";
+  var SAME_CAB_MSG = "Ce téléphone est déjà dans ce cabinet.";
+  var joinAsExtra = false; /* écran « Rejoindre » ouvert par une invitation sur un téléphone qui a déjà un cabinet */
+
+  /* —— Multi-cabinets, étapes 2 et 3 : « Vos cabinets » avant le PIN, un PIN par cabinet ——
+     Un seul cabinet sur le téléphone : rien ne change (PIN direct, écran d’aujourd’hui).
+     Le PIN du cabinet principal n’est jamais modifié ici (longueur, clé, dérivation) : seul l’habillage change. */
+  var CAB_COLORS = {
+    teal: { c: "#2c7a73", d: "#1f5a55", s: "#e6f3f1", bg: "#e7f2ef" },
+    violet: { c: "#6b4c9a", d: "#4e3574", s: "#efe8f7", bg: "#efeaf6" },
+    brique: { c: "#a8553a", d: "#7a3a25", s: "#f7e9e3", bg: "#f6ece7" },
+    bleu: { c: "#2f6aa3", d: "#214c75", s: "#e5eef8", bg: "#e9f0f7" },
+    olive: { c: "#6d7a2c", d: "#4d5720", s: "#eff2e0", bg: "#f1f3e6" }
+  };
+  var CAB_COLOR_ORDER = ["violet", "brique", "bleu", "olive", "teal"];
+  function nextCabColor(list) {
+    var used = {};
+    (list || []).forEach(function (c) { if (c && c.color && c.kind !== "archive") used[c.color] = true; });
+    used.teal = true; /* réservée au cabinet principal */
+    for (var i = 0; i < CAB_COLOR_ORDER.length; i++) if (!used[CAB_COLOR_ORDER[i]]) return CAB_COLOR_ORDER[i];
+    return CAB_COLOR_ORDER[(list || []).length % 4];
+  }
+  /* Nom affiché : « Cabinet » + prénom de la première administratrice (jamais de donnée patient). */
+  function cabNameOf(st) {
+    var n = "";
+    ((st && st.roster) || []).forEach(function (rec) {
+      if (n || !rec || !rec.name || rec.role !== "admin") return;
+      if (typeof isHiddenPresence === "function" && isHiddenPresence(rec.name)) return;
+      n = String(rec.name).trim().slice(0, 24);
+    });
+    return n ? "Cabinet " + n : "";
+  }
+  /* Cabinets que l’on peut ouvrir sur ce téléphone (principal d’abord). */
+  function cabChoices() {
+    var out = [];
+    loadCabs().list.forEach(function (c) {
+      if (!c || !c.id || c.kind === "archive" || c.refused) return;
+      if (!slotOccupied(c.id)) return;
+      if (c.id === CAB_MAIN) out.unshift(c); else out.push(c);
+    });
+    return out;
+  }
+  function cabEntry(id) {
+    var hit = null;
+    loadCabs().list.forEach(function (c) { if (c && c.id === id) hit = c; });
+    return hit;
+  }
+  function cabLabel(c) {
+    if (c && c.name) return c.name;
+    if (c && c.id === CAB_MAIN) return "Votre cabinet";
+    return c && c.kind === "creation" ? "Nouveau cabinet" : "Autre cabinet";
+  }
+  function cabColor(c) {
+    return CAB_COLORS[(c && c.color) || (c && c.id === CAB_MAIN ? "teal" : "violet")] || CAB_COLORS.violet;
+  }
+  function multiCab() { return cabChoices().length >= 2; }
+  function updateCabEntry(id, fn) {
+    try {
+      var r = loadCabs();
+      var hit = null;
+      r.list.forEach(function (c) { if (c && c.id === id) hit = c; });
+      if (!hit) return;
+      if (fn(hit) !== false) saveCabs(r);
+    } catch (e) {}
+  }
+  /* Après ouverture : nom du cabinet tenu à jour dans le registre (texte affiché sur la liste). */
+  function noteCabOpened() {
+    var nm = cabNameOf(state);
+    updateCabEntry(CAB_BOUND, function (c) {
+      if (!nm || c.name === nm) return false;
+      c.name = nm;
+    });
+    try { localStorage.setItem(LS_ACTIVE, CAB_BOUND); } catch (e) {}
+  }
+
+  function renderCabList() {
+    var box = $("cabs-list");
+    if (!box) return;
+    box.innerHTML = "";
+    cabChoices().forEach(function (c) {
+      var col = cabColor(c);
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "choix-item";
+      b.setAttribute("data-cab", c.id);
+      b.style.background = col.c;
+      b.style.boxShadow = "0 12px 28px " + col.c + "47";
+      var sw = document.createElement("span");
+      sw.className = "choix-swatch";
+      sw.setAttribute("aria-hidden", "true");
+      var tx = document.createElement("span");
+      var h = document.createElement("h2");
+      h.textContent = cabLabel(c);
+      var p = document.createElement("p");
+      p.textContent = c.id === CAB_MAIN ? "Votre tournée" : "Sur ce téléphone";
+      tx.appendChild(h);
+      tx.appendChild(p);
+      b.appendChild(sw);
+      b.appendChild(tx);
+      b.addEventListener("click", function () { pickCab(c.id); });
+      box.appendChild(b);
+    });
+  }
+  function showCabList() {
+    resetPinTheme();
+    renderCabList();
+    showScreen("screen-cabs");
+  }
+  /* Choisir un cabinet : même page s’il est déjà lié à cette page, sinon rechargement propre sur ce cabinet. */
+  function pickCab(id) {
+    try { sessionStorage.setItem(SS_CAB_PICK, id); } catch (e) {}
+    try { localStorage.setItem(LS_ACTIVE, id); } catch (e2) {}
+    if (id === CAB_BOUND) {
+      CAB_PICKED = true;
+      meta = loadMeta();
+      openBoundPin();
+      return;
+    }
+    location.reload();
+  }
+  function changeCabinet() {
+    try { sessionStorage.removeItem(SS_CAB_PICK); } catch (e) {}
+    CAB_PICKED = false;
+    if (unlocked) lockNow();
+    showCabList();
+  }
+  function resetPinTheme() {
+    var scr = $("screen-pin");
+    if (!scr) return;
+    scr.classList.remove("cab-themed");
+    ["--teal", "--teal-d", "--teal-s", "--cab-bg"].forEach(function (v) { scr.style.removeProperty(v); });
+    if ($("pin-cab-name")) $("pin-cab-name").textContent = "Vydel";
+    if ($("pin-switch")) $("pin-switch").hidden = true;
+  }
+  /* PIN du cabinet lié à cette page. Plusieurs cabinets : couleurs et nom du cabinet + « Changer de cabinet ». */
+  function openBoundPin(hint) {
+    openPin("unlock", "Code PIN", hint || "Saisissez le PIN du cabinet.");
+    if (!multiCab()) return;
+    var c = cabEntry(CAB_BOUND) || { id: CAB_BOUND };
+    var col = cabColor(c);
+    var scr = $("screen-pin");
+    scr.classList.add("cab-themed");
+    scr.style.setProperty("--teal", col.c);
+    scr.style.setProperty("--teal-d", col.d);
+    scr.style.setProperty("--teal-s", col.s);
+    scr.style.setProperty("--cab-bg", col.bg);
+    var nm = cabLabel(c);
+    if ($("pin-cab-name")) $("pin-cab-name").textContent = nm;
+    $("pin-title").textContent = "PIN du " + (/^Cabinet /.test(nm) ? nm : "cabinet");
+    if (!hint && boundPinLen() === NEW_CABINET_PIN_LEN) $("pin-hint").textContent = "6 chiffres, choisi pour ce cabinet.";
+    if ($("pin-switch")) $("pin-switch").hidden = false;
+    setPinDots();
+  }
+  /* Longueur connue du PIN (nouveaux cabinets créés ici : 6). Le principal : affichage d’aujourd’hui. */
+  function boundPinLen() {
+    if (CAB_BOUND === CAB_MAIN) return 0;
+    var c = cabEntry(CAB_BOUND);
+    return (c && c.pinLen) || 0;
+  }
+  /* Ouverture (avant le PIN) : liste si plusieurs cabinets et aucun choix dans cette session. */
+  function openCabEntry(hint) {
+    if (multiCab() && !CAB_PICKED) { showCabList(); return; }
+    openBoundPin(hint);
+  }
+
+  /* Invitation rangée à part (étape 1) : consommée sur le relais à la première ouverture.
+     Rien n’est affiché tant que le relais n’a pas confirmé qu’elle est encore valable. */
+  async function consumeSideInvite() {
+    var c = cabEntry(CAB_BOUND);
+    if (CAB_BOUND === CAB_MAIN || !c || !c.inviteCode || c.inviteUsedAt) return { ok: true };
+    var env;
+    try { env = await peekMqttEnv(secu.topic, 15000); } catch (e) { return { ok: false, why: "net" }; }
+    var remote;
+    try { remote = normState(await decryptEnvelope(env, secu.ck)); } catch (e2) { return { ok: false, why: "net" }; }
+    if (!findLiveInvite(remote, c.inviteCode)) {
+      updateCabEntry(CAB_BOUND, function (x) { x.refused = Date.now(); delete x.inviteCode; });
+      return { ok: false, why: "used" };
+    }
+    markInviteUsed(remote, c.inviteCode);
+    return { ok: true, remote: remote, code: c.inviteCode };
+  }
   function randHex(n) {
     var b = crypto.getRandomValues(new Uint8Array(n));
     var s = "";
@@ -1341,7 +1700,7 @@
   }
 
   /* Bascule ce téléphone vers le cabinet sécurisé décrit par ptr. remote = données reçues (fusionnées). */
-  async function adoptPointer(ptr, remote) {
+  async function adoptPointer(ptr, remote, opts) {
     if (secuBusy || !unlocked || !sessionPin || !ptr || !ptr.t || !ptr.k) return false;
     if (!/^[0-9a-f]{32}$/.test(String(ptr.t))) return false;
     secuBusy = true;
@@ -1381,8 +1740,12 @@
           mqttHandle.publishRaw("tournee/" + prev.topic, JSON.stringify(fenv), true);
         } catch (eF) {}
       }
+      /* Multi-cabinets (étape 1) : bascule du MÊME cabinet (pointeur reçu chiffré sur son propre canal,
+         ou invitation vérifiée). Avant de réécrire meta/meta2, on en garde une copie octet pour octet. */
+      if (!(opts && opts.archived)) { try { archiveMainSlot("bascule", false); } catch (eA) {} }
       saveMeta2(m2);
       await activateSecu(m2, ckRaw);
+      ensureCabRegistry();
       secuAck();
       if (m2.at && (!state.secu.at || state.secu.at > m2.at)) state.secu.at = m2.at;
       stopMqtt();
@@ -1734,6 +2097,10 @@
     var ckRaw;
     try { ckRaw = await unwrapWithPin(inv.w, pin); } catch (eW) { var ep = new Error("pin"); ep.code = "pin"; throw ep; }
     var ck = await importAes(ckRaw);
+    /* Multi-cabinets (étape 1) : un téléphone qui a déjà un cabinet ne le perd jamais.
+       Même cabinet : rien n’est réécrit (ni clé ni PIN). Autre cabinet : rangé à part, sans devenir actif. */
+    var occupied = mainSlotOccupied();
+    if (occupied && cabIdByTopic(inv.topic)) throw sideCabErr("same");
     var got = await peekAllRelays(inv.topic, 25000);
     var env = got.env;
     if (!env || !env.ct) throw joinErr("empty");
@@ -1741,6 +2108,14 @@
     try { data = normState(await decryptEnvelope(env, ck)); } catch (eD) { throw joinErr("key"); }
     /* Usage unique : rien n’est enregistré sur ce téléphone si l’invitation est absente, utilisée ou révoquée. */
     if (!findLiveInvite(data, inv.code)) throw inviteRefused();
+    if (occupied) {
+      var m2side = { v: 2, topic: inv.topic, at: (data.secu && data.secu.at) || Date.now(), wrap: await wrapWithPin(ckRaw, pin), old: null, closed: true };
+      var metaSide = { salt: b64(crypto.getRandomValues(new Uint8Array(16))), pinHash: "", blobId: inv.topic, blobUrl: "mqtt:" + inv.topic, shareOk: true };
+      /* L’invitation n’est pas encore marquée utilisée : elle le sera à la première ouverture de ce cabinet (étape 2). */
+      addSideCabinet({ kind: "invitation", topic: inv.topic, inviteCode: normInviteCode(inv.code), name: cabNameOf(data), pinLen: String(pin).length === NEW_CABINET_PIN_LEN ? NEW_CABINET_PIN_LEN : 0 }, { "tournee.meta": metaSide, "tournee.meta2": m2side, "tournee.enc2": JSON.stringify(env) });
+      pendingInvite = null;
+      throw sideCabErr("added");
+    }
     markInviteUsed(data, inv.code);
     meta = { salt: b64(crypto.getRandomValues(new Uint8Array(16))), pinHash: "", blobId: inv.topic, blobUrl: "mqtt:" + inv.topic, shareOk: true };
     saveMeta();
@@ -1757,6 +2132,7 @@
     unlocked = true;
     pendingInvite = null;
     try { await persist(true); } catch (eP) {} /* publie tout de suite : les autres téléphones voient l’invitation utilisée */
+    ensureCabRegistry();
     enterApp(false);
   }
 
@@ -1790,12 +2166,36 @@
       } catch (e1) { loaded = null; }
     }
     state = normState(loaded || emptyState());
+    /* Multi-cabinets : invitation rangée à part → consommée sur le relais avant toute ouverture. */
+    var sideInv = await consumeSideInvite();
+    if (!sideInv.ok) {
+      secu = null;
+      key = null;
+      sessionPin = "";
+      localLegacyKey = null;
+      state = emptyState();
+      pinBuf = "";
+      if (sideInv.why === "used") {
+        changeCabinet();
+        askConfirm("Invitation refusée", INVITE_REFUSED_MSG, null);
+        return;
+      }
+      $("pin-error").textContent = "Connexion Internet nécessaire pour ouvrir ce cabinet la première fois.";
+      $("pin-error").hidden = false;
+      setPinDots();
+      return;
+    }
+    if (sideInv.remote) state = normState(mergeState(state, sideInv.remote));
     lastFait = faitTodayIds();
     lastFaitReady = true;
     seedTxWatch();
     unlocked = true;
     if (backfillHistory()) persist(false);
     enterApp(false);
+    if (sideInv.code) {
+      try { await persist(true); } catch (eP) {}
+      updateCabEntry(CAB_BOUND, function (x) { x.inviteUsedAt = Date.now(); delete x.inviteCode; });
+    }
   }
 
   /* Téléphone encore à l’ancienne (ex. resté éteint après la fin de transition) : rejoint via une invitation. */
@@ -1807,8 +2207,9 @@
       return false;
     }
     var remote = null;
+    var env = null;
     try {
-      var env = await peekMqttEnv(inv.topic, 25000);
+      env = await peekMqttEnv(inv.topic, 25000);
       remote = normState(await decryptEnvelope(env, await importAes(ckRaw)));
     } catch (eR) {
       toast("Invitation : connexion impossible. Vérifiez Internet, puis réessayez.");
@@ -1818,16 +2219,48 @@
       askConfirm("Invitation refusée", INVITE_REFUSED_MSG, null);
       return false;
     }
+    /* Multi-cabinets (étape 1) : on ne bascule ce téléphone que vers la suite de SON cabinet
+       (au moins un patient en commun). Un autre cabinet est rangé à part : rien n’est fusionné ni écrasé. */
+    if (!sameCabinetData(state, remote)) {
+      try {
+        addSideCabinet({ kind: "invitation", topic: inv.topic, inviteCode: normInviteCode(inv.code), name: cabNameOf(remote), pinLen: String(sessionPin).length === NEW_CABINET_PIN_LEN ? NEW_CABINET_PIN_LEN : 0 }, {
+          "tournee.meta": { salt: b64(crypto.getRandomValues(new Uint8Array(16))), pinHash: "", blobId: inv.topic, blobUrl: "mqtt:" + inv.topic, shareOk: true },
+          "tournee.meta2": { v: 2, topic: inv.topic, at: (remote.secu && remote.secu.at) || Date.now(), wrap: await wrapWithPin(ckRaw, sessionPin), old: null, closed: true },
+          "tournee.enc2": JSON.stringify(env)
+        });
+        toast(SIDE_CAB_MSG);
+      } catch (eS) {
+        toast("Espace insuffisant sur ce téléphone : l’invitation n’est pas utilisée. Rien n’a changé.");
+      }
+      return false;
+    }
+    /* Même cabinet : copie octet pour octet de l’ancien état avant la bascule (rien n’est perdu). */
+    try { archiveMainSlot("invitation-ancien-telephone", true); } catch (eA) {
+      toast("Espace insuffisant sur ce téléphone : l’invitation n’est pas utilisée. Rien n’a changé.");
+      return false;
+    }
     markInviteUsed(remote, inv.code);
-    return adoptPointer({ t: inv.topic, k: b64(ckRaw), at: 0 }, remote);
+    return adoptPointer({ t: inv.topic, k: b64(ckRaw), at: 0 }, remote, { archived: true });
+  }
+
+  /* Deux états du même cabinet partagent leurs patients (identifiants aléatoires, gardés par la sécurisation). */
+  function sameCabinetData(a, b) {
+    function ids(s) {
+      var o = {};
+      ((s && s.patients) || []).forEach(function (p) { if (p && p.id) o[p.id] = true; });
+      Object.keys((s && s.deleted) || {}).forEach(function (k) { o[k] = true; });
+      return o;
+    }
+    var ia = ids(a), ib = ids(b);
+    return Object.keys(ia).some(function (k) { return !!ib[k]; });
   }
 
   /* —— Code de récupération (1.91) ——
      24 caractères aléatoires, jamais stockés. On garde la clé du cabinet emballée par une clé dérivée du code
      (PBKDF2-SHA-256, 600 000 tours, sel aléatoire) : sur chaque téléphone (meta2.rec) et en copie retained « …/rec » sur les relais. */
   var REC_ABC = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  var LS_REC_TRIES = "tournee.recTries";
-  var LS_REC_SEEN = "tournee.recSeen";
+  var LS_REC_TRIES = cabLs("tournee.recTries");
+  var LS_REC_SEEN = cabLs("tournee.recSeen");
   var recShownCode = "";
   var recCkPending = null;
   var recPubPending = false;
@@ -2135,7 +2568,7 @@
     if (!b || !unlocked) return;
     var list = ordoVeillePatients();
     var hid = "";
-    try { hid = localStorage.getItem("tournee.ordoBannerHide") || ""; } catch (e) {}
+    try { hid = localStorage.getItem(LS_ORDO_BANNER) || ""; } catch (e) {}
     if (!list.length || hid === todayISO()) { b.hidden = true; return; }
     var text;
     if (list.length === 1) {
@@ -2156,8 +2589,8 @@
   function maybeOrdoNotif(n) {
     try {
       if (!("Notification" in window) || Notification.permission !== "granted") return;
-      if (localStorage.getItem("tournee.ordoNotif") === todayISO()) return;
-      localStorage.setItem("tournee.ordoNotif", todayISO());
+      if (localStorage.getItem(LS_ORDO_NOTIF) === todayISO()) return;
+      localStorage.setItem(LS_ORDO_NOTIF, todayISO());
       var body = "Ordonnance à renouveler dans les 7 jours pour " + n + " patient" + (n > 1 ? "s" : "") + ". Ouvrez Vydel pour voir.";
       if (navigator.serviceWorker && navigator.serviceWorker.ready) {
         navigator.serviceWorker.ready.then(function (reg) { reg.showNotification("Vydel", { body: body, tag: "ordo-" + todayISO(), icon: "./icons/icon-192.png" }); }).catch(function () {});
@@ -2165,7 +2598,7 @@
     } catch (e) {}
   }
   if ($("ordo-banner-x")) $("ordo-banner-x").addEventListener("click", function () {
-    try { localStorage.setItem("tournee.ordoBannerHide", todayISO()); } catch (e) {}
+    try { localStorage.setItem(LS_ORDO_BANNER, todayISO()); } catch (e) {}
     $("ordo-banner").hidden = true;
   });
 
@@ -2354,6 +2787,34 @@
       var claim = await trialClaim(trialRes, childIss ? childIss.pub : "");
       if (!claim.ok) { trialFail(claim.err); return; }
     } else trialRes = null;
+    /* Multi-cabinets (étape 1) : un téléphone qui a déjà un cabinet le garde tel quel ;
+       le nouveau cabinet est créé à part (clés suffixées), sans devenir actif ni être publié. */
+    if (mainSlotOccupied()) {
+      var ckSide = crypto.getRandomValues(new Uint8Array(32));
+      var topicSide = randHex(16);
+      var atSide = Date.now();
+      var stSide = emptyState();
+      stSide.cabinetMode = "split";
+      stSide.roster = [];
+      stSide.secu = { at: atSide, closedAt: 0, acks: {} };
+      if (childIss && trialRes) stSide.trialIssuer = { kid: childIss.kid, pub: childIss.pub, jwk: childIss.jwk, chain: null, at: Date.now(), req: trialRes.h };
+      addSideCabinet({ kind: "creation", topic: topicSide, pinLen: NEW_CABINET_PIN_LEN }, {
+        "tournee.meta": { salt: b64(crypto.getRandomValues(new Uint8Array(16))), pinHash: "", blobId: topicSide, blobUrl: "mqtt:" + topicSide, shareOk: false },
+        "tournee.meta2": { v: 2, topic: topicSide, at: atSide, wrap: await wrapWithPin(ckSide, pin), old: null, closed: true },
+        "tournee.enc2": JSON.stringify(await encV2(stSide, await importAes(ckSide)))
+      });
+      var burnSide = pendingBetaId;
+      try { burnSide = burnSide || sessionStorage.getItem(SS_BETA_ID) || ""; } catch (eB2) {}
+      if (burnSide) markBetaUsed(burnSide);
+      if (trialRes && trialRes.id) markBetaUsed(trialRes.id);
+      clearBetaSession();
+      emergencyCreate = false;
+      pinFirst = "";
+      pinBuf = "";
+      toast(SIDE_CAB_MSG);
+      continueAfterCgu();
+      return;
+    }
     rememberPin(pin);
     /* 1.91 : nouveau cabinet directement en mode sécurisé (clé et sujet aléatoires). */
     var ckRaw = crypto.getRandomValues(new Uint8Array(32));
@@ -2388,6 +2849,7 @@
     clearBetaSession();
     emergencyCreate = false;
     markNewCabinetOnboarding(); /* 1.99 : tutoriel d’ouverture, nouveaux cabinets seulement */
+    ensureCabRegistry();
     enterApp(true);
     startShare();
     createRecoveryCode(true);
@@ -2559,23 +3021,54 @@
       try {
         await joinWithInvite(pin, inv);
       } catch (eI) {
-        stopMqtt();
+        if (eI && eI.code === "added") {
+          /* Cabinet ajouté à côté du cabinet existant : retour à « Vos cabinets ». */
+          joinAsExtra = false;
+          err.hidden = true;
+          if ($("join-invite")) $("join-invite").value = "";
+          if ($("join-pin")) $("join-pin").value = "";
+          try { sessionStorage.removeItem(SS_CAB_PICK); } catch (eS) {}
+          CAB_PICKED = false;
+          showCabList();
+          toast("Cabinet ajouté sur ce téléphone. Touchez-le pour l’ouvrir.");
+          return;
+        }
+        if (!(eI && (eI.code === "same" || eI.code === "added"))) stopMqtt();
         err.textContent = (eI && eI.code === "pin")
           ? "PIN incorrect pour cette invitation."
           : (eI && eI.code === "used")
             ? INVITE_REFUSED_MSG
-            : (JOIN_MSG[eI && eI.code] || JOIN_MSG.other);
+            : (eI && eI.code === "same")
+              ? SAME_CAB_MSG
+              : (eI && eI.code === "added")
+                ? SIDE_CAB_MSG
+                : (JOIN_MSG[eI && eI.code] || JOIN_MSG.other);
         err.hidden = false;
       }
       return;
     }
     try {
       var blobId = await pinTopicId(pin);
-      var env = await waitMqttEnv(blobId, 12000);
+      /* Multi-cabinets (étape 1) : jamais sur les clés d’un cabinet déjà présent. */
+      var occupiedL = mainSlotOccupied();
+      if (occupiedL && cabIdByTopic(blobId)) { err.textContent = SAME_CAB_MSG; err.hidden = false; return; }
+      var env = occupiedL
+        ? await peekMqttEnv(blobId, 12000, "", function (e) { return e && e.iv && e.ct && e.salt && !e.kind; })
+        : await waitMqttEnv(blobId, 12000);
       if (!env || !env.iv || !env.ct || !env.salt) throw new Error("format");
       var salt = unb64(env.salt);
       var k = await deriveKey(pin, salt);
       var data = await decryptEnvelope(env, k);
+      if (occupiedL) {
+        addSideCabinet({ kind: "ancien-lien", topic: blobId, name: cabNameOf(normState(data)) }, {
+          "tournee.meta": { salt: env.salt, pinHash: await pinHash(pin, salt), blobId: blobId, blobUrl: "mqtt:" + blobId, shareOk: true },
+          "tournee.enc": JSON.stringify(env)
+        });
+        data = null;
+        err.textContent = SIDE_CAB_MSG;
+        err.hidden = false;
+        return;
+      }
       key = k;
       state = data;
       if (!state.patients) state.patients = [];
@@ -2606,6 +3099,7 @@
       unlocked = true;
       var ptrJ = data && data.secuPtr;
       if (state.secuPtr) delete state.secuPtr;
+      ensureCabRegistry();
       if (ptrJ) {
         enterApp(false);
         adoptPointer(ptrJ, null);
@@ -2712,6 +3206,7 @@
 
   function enterApp(fresh) {
     viewDayISO = "";
+    noteCabOpened();
     setTimeout(function () { tryTrialActivation().then(function () { trialSync(); }); }, 2500);
     outboxSig = outboxSigOf(state);
     setTimeout(refreshSyncUi, 0);
@@ -2823,13 +3318,22 @@
     if ($("msg-list")) $("msg-list").innerHTML = "";
     pinBuf = "";
     currentTab = "tournee";
-    openPin("unlock", "Code PIN", "Saisissez le PIN du cabinet.");
+    openBoundPin();
   }
 
-  if ($("btn-lock")) $("btn-lock").addEventListener("click", lockNow);
+  /* Verrouiller à la main = retour à l’accueil : plusieurs cabinets → la liste. */
+  function lockToHome() {
+    lockNow();
+    if (multiCab()) changeCabinet();
+  }
+  if ($("btn-lock")) $("btn-lock").addEventListener("click", lockToHome);
   if ($("btn-lock-2")) $("btn-lock-2").addEventListener("click", function () {
     $("modal-menu").hidden = true;
-    lockNow();
+    lockToHome();
+  });
+  if ($("pin-switch")) $("pin-switch").addEventListener("click", changeCabinet);
+  if ($("btn-cabs-create")) $("btn-cabs-create").addEventListener("click", function () {
+    toast("Bientôt : créer un cabinet sur ce téléphone.");
   });
 
   document.addEventListener("visibilitychange", function () {
@@ -4101,8 +4605,8 @@
     encV2(d, k).then(function (env) {
       if (seq !== draftSeq) return;
       /* 1.91 : stockage persistant (survit à la fermeture), toujours chiffré avec la clé du cabinet. */
-      try { localStorage.setItem("tournee.draft", JSON.stringify(env)); } catch (e) {}
-      try { sessionStorage.removeItem("tournee.draft"); } catch (e1) {}
+      try { localStorage.setItem(LS_DRAFT, JSON.stringify(env)); } catch (e) {}
+      try { sessionStorage.removeItem(LS_DRAFT); } catch (e1) {}
     }).catch(function () {});
   }
 
@@ -4110,7 +4614,7 @@
     var d = patientDraft;
     if (d) { fillPatientDraft(d); return; }
     var raw = null;
-    try { raw = JSON.parse(localStorage.getItem("tournee.draft") || sessionStorage.getItem("tournee.draft") || "null"); } catch (e2) { raw = null; }
+    try { raw = JSON.parse(localStorage.getItem(LS_DRAFT) || sessionStorage.getItem(LS_DRAFT) || "null"); } catch (e2) { raw = null; }
     if (!raw) return;
     if (raw.ct && raw.iv) {
       var k = key;
@@ -4118,7 +4622,7 @@
       decryptEnvelope(raw, k).then(function (dd) {
         if (dd && unlocked && !patientDraft) { patientDraft = dd; fillPatientDraft(dd); }
       }).catch(function () {
-        try { sessionStorage.removeItem("tournee.draft"); localStorage.removeItem("tournee.draft"); } catch (e3) {}
+        try { sessionStorage.removeItem(LS_DRAFT); localStorage.removeItem(LS_DRAFT); } catch (e3) {}
       });
       return;
     }
@@ -4156,8 +4660,8 @@
   function clearPatientDraft() {
     patientDraft = null;
     draftSeq++;
-    try { sessionStorage.removeItem("tournee.draft"); } catch (e) {}
-    try { localStorage.removeItem("tournee.draft"); } catch (e2) {}
+    try { sessionStorage.removeItem(LS_DRAFT); } catch (e) {}
+    try { localStorage.removeItem(LS_DRAFT); } catch (e2) {}
   }
 
   $("btn-add").addEventListener("click", function () { openPatient(null); });
@@ -7009,8 +7513,8 @@
   /* —— File d’envoi persistante (1.91). Le contenu en attente est le dernier état complet,
      déjà chiffré avec la clé du cabinet dans la copie locale ; la file garde seulement
      le compteur, les dates et un numéro de séquence. Vidée uniquement sur accusé (puback, qos 1). —— */
-  var LS_OUTBOX = "tournee.outbox";
-  var LS_LAST_SYNC = "tournee.lastSync";
+  var LS_OUTBOX = cabLs("tournee.outbox");
+  var LS_LAST_SYNC = cabLs("tournee.lastSync");
   var outboxRetryTimer = null;
   var outboxTries = 0;
   var outboxWaitTimer = null;
@@ -7390,7 +7894,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.7-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.9-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 
@@ -11655,10 +12159,20 @@
 
   function continueAfterCgu() {
     meta = loadMeta();
+    ensureCabRegistry(); /* multi-cabinets (étape 1) : inscrit le cabinet présent, sans toucher à ses clés */
     if (loadMeta2() || (meta && meta.pinHash)) {
-      if (pendingInvite && loadMeta2()) { pendingInvite = null; toast("Ce téléphone est déjà dans un cabinet."); }
+      /* Multi-cabinets : une invitation vers un AUTRE cabinet s’ajoute à ce téléphone (rien n’est écrasé). */
+      if (pendingInvite && loadMeta2() && !cabIdByTopic(pendingInvite.topic)) {
+        joinAsExtra = true;
+        if ($("join-error")) $("join-error").hidden = true;
+        if ($("join-pin")) $("join-pin").value = "";
+        if ($("join-invite")) $("join-invite").value = "Invitation reçue ✓ vj=" + pendingInvite.raw;
+        showScreen("screen-join");
+        return;
+      }
+      if (pendingInvite && loadMeta2()) { pendingInvite = null; toast(SAME_CAB_MSG); }
       if (pendingTrialLink) { pendingTrialLink = ""; toast("Ce téléphone est déjà dans un cabinet."); }
-      openPin("unlock", "Code PIN", pendingInvite ? "Saisissez le PIN du cabinet pour utiliser l’invitation." : "Saisissez le PIN du cabinet.");
+      openCabEntry(pendingInvite ? "Saisissez le PIN du cabinet pour utiliser l’invitation." : "");
     } else if (pendingTrialLink && !pendingInvite) {
       var tl = pendingTrialLink;
       pendingTrialLink = "";

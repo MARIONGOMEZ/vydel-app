@@ -6542,7 +6542,10 @@
   });
   if ($("btn-push")) $("btn-push").addEventListener("click", function () {
     $("modal-menu").hidden = true;
-    if (pushLoad().on) pushDisable(); else pushEnable();
+    /* Choix fait depuis le menu = choix définitif : la fenêtre d’ouverture ne revient pas (pas de relance après « Désactiver »). */
+    var on = pushLoad().on;
+    try { localStorage.setItem(LS_PUSH_ASK, on ? "deny" : "allow"); } catch (e) {}
+    if (on) pushDisable(); else pushEnable();
   });
   if ($("btn-menu")) $("btn-menu").addEventListener("click", refreshPushBtn);
 

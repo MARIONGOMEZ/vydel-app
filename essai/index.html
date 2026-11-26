@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vydel — essai gratuit de 14 jours</title>
+  <meta name="description" content="Voici la nouvelle application Vydel : essayez-la pendant 14 jours.">
+  <meta property="og:title" content="Vydel — essai gratuit de 14 jours">
+  <meta property="og:description" content="La checklist du jour pour les IDEL. Essayez Vydel pendant 14 jours.">
+  <meta property="og:image" content="https://app.vydel.fr/icons/icon-512.png">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="../icons/icon-192.png">
+  <script>
+    /* Lien d’essai unique et partageable : https://app.vydel.fr/essai (ou /essai?i=<invitation>).
+       Rien n’est émis ici : l’essai est créé par le serveur quand l’IDEL crée son cabinet. */
+    (function () {
+      var m = /[?&]i=([0-9a-z]{10})(?:&|$)/.exec(location.search || "");
+      location.replace("../#essai" + (m ? "=" + m[1] : ""));
+    })();
+  </script>
+</head>
+<body style="font:16px -apple-system,system-ui,sans-serif;text-align:center;padding:40px 16px">
+  <p>Ouverture de Vydel…</p>
+  <p><a href="../#essai">Ouvrir Vydel</a></p>
+</body>
+</html>

@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="fr" class="tab-tournee">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2C7A73">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Vydel">
+  <meta name="description" content="Checklist Vydel pour IDEL. Pas un dossier médical.">
+  <meta name="tournee-version" content="1.99.2-app">
+  <!-- Vydel v1 -->
+  <title>Vydel</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=1.99.2-app">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=1.99.2-app">
+  <link rel="stylesheet" href="./css/leaflet.css?v=1.99.2-app">
+  <link rel="stylesheet" href="./css/app.css?v=1.99.2-app">
+</head>
+<body>
+  <div id="app">
+
+    <!-- CGU -->
+    <section id="screen-cgu" class="screen" hidden>
+      <div class="form-screen cgu-screen">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.2-app" alt="">
+        <h1>Conditions d’utilisation</h1>
+        <div class="cgu-body">
+          <p>Vydel est une <strong>checklist de passages</strong> pour IDEL. Ce n’est <strong>pas un dossier médical</strong> : pas de diagnostic, pas de pathologie, pas de notes cliniques. Uniquement le passage du jour.</p>
+          <p>Les fiches patients, transmissions et messages sont chiffrés sur les téléphones (AES-GCM 256 bits). L’échange entre associées n’envoie que des données chiffrées (voir « Chiffrement de vos données » ci-dessous). Le cabinet est responsable de qui connaît le PIN et de qui reçoit une invitation.</p>
+          <p>L’application web est un outil fourni en l’état, sans garantie médicale.</p>
+          <p>La reproduction de l’application ou de son code source sans autorisation est interdite.</p>
+          <p>L’utilisateur s’interdit de reproduire, capturer, photographier ou exporter les données patients à des fins de récupération de clientèle, notamment en cas de départ d’un groupe ou d’une association. Toute violation constitue une faute grave ouvrant droit à dommages-intérêts.</p>
+          <p>L’utilisateur reste seul responsable du respect du secret médical et de ses obligations professionnelles. L’éditeur ne saurait être tenu responsable des dommages indirects liés à l’utilisation de l’application.</p>
+          <h2 class="cgu-h" id="cgu-chiffrement">Chiffrement de vos données</h2>
+          <ul class="cgu-list">
+            <li><strong>Chiffré sur le téléphone, avant tout envoi.</strong> Le chiffrement utilisé, AES-GCM 256 bits, est un standard reconnu, du niveau de celui des banques.</li>
+            <li><strong>Une clé secrète par cabinet.</strong> Chaque cabinet a sa propre clé, tirée au hasard par l’appli (32 octets). Elle ne dépend pas du PIN.</li>
+            <li id="cgu-pin-6"><strong>PIN de 6 chiffres requis à la création d’un nouveau cabinet.</strong> Les cabinets existants gardent leur PIN actuel.</li>
+            <li><strong>Le PIN protège la clé sur votre téléphone.</strong> Il ne sert qu’à ça. Pour qu’il soit très long à deviner, l’appli fait un calcul volontairement lent (600 000 tours), avec un « sel » aléatoire propre à chaque téléphone.</li>
+            <li><strong>Pas de serveur Vydel, pas de compte.</strong> Pour partager la tournée entre téléphones, l’appli passe par des relais publics. Ils ne voient que du texte chiffré, illisible sans la clé.</li>
+            <li><strong>Le brouillon aussi.</strong> Une fiche patient en cours de saisie est gardée chiffrée sur le téléphone, même si l’appli est fermée ; elle est effacée une fois la fiche enregistrée ou annulée. Hors ligne, les changements attendent sur le téléphone, chiffrés, et partent au retour du réseau.</li>
+          </ul>
+          <p><strong>Ce que le chiffrement ne couvre pas :</strong></p>
+          <ul class="cgu-list">
+            <li>La « Question SAV » part par e-mail <strong>non chiffré</strong> : n’y mettez aucun nom ni information sur un patient.</li>
+            <li>Pour placer les patients sur la carte, l’appli envoie l’adresse seule, sans nom, à un service de cartographie (Photon). « Y aller » transmet l’adresse seule à l’appli GPS choisie.</li>
+            <li>Un téléphone ouvert dans l’appli affiche les données : verrouillez-le et ne le prêtez pas.</li>
+            <li>Le PIN se donne en personne, jamais par message. Le lien d’invitation s’envoie uniquement à la bonne personne ; chaque lien ne sert qu’une fois.</li>
+            <li><strong>PIN oublié : le code de récupération.</strong> À la création du cabinet, l’admin reçoit en main propre, sur son écran, un code de récupération (code de secours) de 24 caractères, affiché une seule fois. Il peut, s’il le souhaite, se l’envoyer par e-mail à sa propre adresse. Ce code permet de choisir un nouveau PIN sans perdre les données ; il est alors remplacé par un nouveau code. Chaque utilisation est notée dans l’historique du cabinet et signalée sur les autres téléphones. Sans PIN ni code de récupération, les données ne sont pas récupérables, pas même par l’éditeur. Gardez ce code à part du PIN, jamais au même endroit.</li>
+            <li>Lors du passage d’un cabinet existant à cette protection, une copie protégée à l’ancienne (par le seul PIN) reste au plus 14 jours, puis elle est effacée.</li>
+          </ul>
+          <h2 class="cgu-h" id="cgu-photos">Photos de documents</h2>
+          <ul class="cgu-list">
+            <li><strong>Des documents seulement, jamais de patients.</strong> Accès ou clé, ordonnance, carte vitale.</li>
+            <li id="cgu-photos-partage"><strong>Partagées avec tous les membres du cabinet (associés et remplaçants).</strong> Elles circulent chiffrées de bout en bout par des relais publics, sans y être gardées, et ne sont jamais en clair, ni sur les relais ni dans le stockage des téléphones. Elles s’effacent automatiquement : à la fin de l’ordonnance pour une photo d’ordonnance, au bout de 90 jours pour les autres. L’accès est protégé par le PIN du cabinet et le contenu est chiffré de bout en bout avec la clé du cabinet. Chaque téléphone du cabinet en garde une copie chiffrée. Un cabinet pas encore sécurisé les garde sur le seul téléphone qui les a prises.</li>
+            <li><strong>Une photo n’arrive que si un téléphone qui l’a est en ligne en même temps.</strong> Il n’y a pas de serveur qui les stocke.</li>
+            <li><strong>Effacées automatiquement sur tous les téléphones.</strong> Une photo d’ordonnance reste jusqu’à la date de fin de l’ordonnance indiquée sur la fiche du patient (la plus tardive s’il y en a deux), puis elle est effacée ; si cette date est modifiée, l’effacement suit. Sans date de fin, elle est effacée au bout de 90 jours. Les photos d’accès ou de carte vitale sont effacées au bout de 90 jours, ou à la fin de l’ordonnance si elle arrive avant. Une photo supprimée l’est partout. Un téléphone resté éteint l’efface à sa prochaine ouverture.</li>
+            <li>Une capture d’écran ou une sauvegarde du téléphone échappe à cet effacement : évitez-les.</li>
+            <li>La carte vitale et l’ordonnance sont des données de santé : ne les photographiez que si c’est nécessaire.</li>
+          </ul>
+          <p>En continuant, vous acceptez ces conditions.</p>
+          <p>© 2026 Orva Labs. Tous droits réservés.</p>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-cgu-accept">J’accepte</button>
+        <button type="button" class="btn btn-ghost" id="btn-cgu-close" hidden>Fermer</button>
+      </div>
+    </section>
+
+    <!-- Accueil -->
+    <section id="screen-welcome" class="screen" hidden>
+      <div class="splash">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.2-app" alt="">
+        <h1 id="welcome-title">Vydel</h1>
+        <p class="lede">Checklist du jour pour IDEL. Pas un dossier médical — uniquement le passage.</p>
+        <button type="button" class="btn btn-primary" id="btn-create">Tester Vydel 14 jours</button>
+        <button type="button" class="btn btn-ghost" id="btn-join">Rejoindre le cabinet</button>
+        <button type="button" class="btn btn-ghost" id="btn-beta-enter">J’ai reçu un essai</button>
+        <button type="button" class="btn btn-ghost" id="btn-install" hidden>Installer l’appli</button>
+        <p class="hint">Nouveau : « Tester Vydel 14 jours » crée ton propre cabinet (PIN de 6 chiffres). Collègue d’un cabinet : Rejoindre + PIN.</p>
+        <p class="hint">iPhone : dans Safari, bouton Partager (carré avec une flèche) → Sur l’écran d’accueil → Ajouter. Android : Chrome → Installer.</p>
+        <p class="hint copy" id="welcome-copy">© 2026 Orva Labs</p>
+      </div>
+    </section>
+
+    <!-- Code PIN (création / confirmation / déverrouillage) -->
+    <section id="screen-pin" class="screen" hidden>
+      <div class="pin-wrap">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.2-app" alt="">
+        <h1>Vydel</h1>
+        <p id="pin-title" class="lede">Code PIN</p>
+        <p id="pin-hint" class="hint">4 à 6 chiffres, partagé entre associées.</p>
+        <div id="pin-dots" class="pin-dots" aria-hidden="true"></div>
+        <p id="pin-error" class="error" hidden></p>
+        <div class="keypad" id="keypad">
+          <button type="button" data-k="1">1</button>
+          <button type="button" data-k="2">2</button>
+          <button type="button" data-k="3">3</button>
+          <button type="button" data-k="4">4</button>
+          <button type="button" data-k="5">5</button>
+          <button type="button" data-k="6">6</button>
+          <button type="button" data-k="7">7</button>
+          <button type="button" data-k="8">8</button>
+          <button type="button" data-k="9">9</button>
+          <button type="button" data-k="back" aria-label="Effacer">⌫</button>
+          <button type="button" data-k="0">0</button>
+          <button type="button" data-k="ok" class="key-ok">OK</button>
+        </div>
+        <button type="button" class="linkish" id="pin-back" hidden>Retour</button>
+        <button type="button" class="linkish" id="btn-pin-forgot" hidden>PIN oublié ?</button>
+      </div>
+    </section>
+
+    <!-- Rejoindre -->
+    <section id="screen-join" class="screen" hidden>
+      <div class="form-screen">
+        <h1>Rejoindre</h1>
+        <p class="lede">Le même PIN que le cabinet. Et le lien d’invitation si on vous en a envoyé un.</p>
+        <label for="join-pin">PIN (4 à 6 chiffres)</label>
+        <input id="join-pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" enterkeyhint="go">
+        <label for="join-invite">Invitation (si reçue)</label>
+        <input id="join-invite" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Collez le lien reçu">
+        <p id="join-error" class="error" hidden></p>
+        <button type="button" class="btn btn-primary" id="btn-join-go">Rejoindre</button>
+        <button type="button" class="btn btn-ghost" id="btn-join-back">Retour</button>
+      </div>
+    </section>
+
+    <!-- Essai de 14 jours (création d’un cabinet) -->
+    <section id="screen-beta" class="screen" hidden>
+      <div class="form-screen">
+        <h1>Essai de 14 jours</h1>
+        <p class="lede">Tu vas créer <strong>ton</strong> propre cabinet, séparé des autres.</p>
+        <label for="beta-key-input">Message ou lien reçu</label>
+        <input id="beta-key-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Collez ici le message reçu" enterkeyhint="go">
+        <p id="beta-error" class="error" hidden></p>
+        <button type="button" class="btn btn-primary" id="btn-beta-go">Valider</button>
+        <button type="button" class="btn btn-ghost" id="btn-beta-back">Retour</button>
+      </div>
+    </section>
+
+    <!-- Application -->
+    <section id="screen-app" class="screen" hidden>
+      <div class="app-head">
+        <header class="topbar">
+          <button type="button" class="icon-btn" id="btn-menu" aria-label="Menu">
+            <img class="topbar-logo" src="./icons/icon-192.png?v=1.99.2-app" alt="">
+          </button>
+          <div class="topbar-title">
+            <div class="topbar-brand">
+              <strong id="app-title">Vydel</strong>
+            </div>
+            <span id="counter" class="counter">0 / 0 faits</span>
+          </div>
+          <div class="topbar-day" id="topbar-day">
+            <button type="button" class="day-nav-btn" id="btn-day-prev-top" aria-label="Jour précédent">‹</button>
+            <div class="topbar-day-main">
+              <p class="topbar-day-label" id="topbar-day-label"></p>
+            </div>
+            <button type="button" class="day-nav-btn" id="btn-day-next-top" aria-label="Jour suivant">›</button>
+          </div>
+          <span id="topbar-count-short" class="topbar-count-short" hidden></span>
+          <button type="button" id="sync-pill" class="sync-pill sync-ok" hidden aria-label="Synchronisé">Synchronisé</button>
+        </header>
+        <div class="search-row" id="search-row">
+          <input id="search" type="search" placeholder="Rechercher un patient…" autocomplete="off" enterkeyhint="search">
+          <div class="scope-row" id="scope-row">
+            <button type="button" class="scope-btn on" id="btn-scope-today" data-mode="today" aria-pressed="true" aria-label="Passages du jour">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>
+              <span id="scope-today-label">Jeudi</span>
+            </button>
+            <button type="button" class="scope-btn" id="btn-scope-all" data-mode="all" aria-pressed="false" aria-label="Tous les patients">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="9" r="2.5"/><path d="M3 19c0-2.8 2.2-5 5-5s5 2.2 5 5"/><path d="M14 19c0-2 1.3-3.7 3-4.4"/></svg>
+              <span>Tous</span>
+            </button>
+            <button type="button" class="scope-btn" id="btn-scope-inactifs" data-mode="inactifs" aria-pressed="false" aria-label="Patients inactifs">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3"/><path d="M5 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/><path d="M4 4l16 16"/></svg>
+              <span>Inactifs</span>
+            </button>
+            <button type="button" class="scope-btn" id="btn-slot-am" hidden>Matin</button>
+            <button type="button" class="scope-btn" id="btn-slot-pm" hidden>Soir</button>
+          </div>
+        </div>
+        <div id="day-strip" class="day-strip">
+          <div class="day-nav">
+            <button type="button" class="day-nav-btn" id="btn-day-prev" aria-label="Jour précédent">‹</button>
+            <div class="day-nav-main">
+              <p id="day-date"></p>
+            </div>
+            <button type="button" class="day-nav-btn" id="btn-day-next" aria-label="Jour suivant">›</button>
+          </div>
+          <div class="hello-quote-line">
+            <p id="hello" class="hello"></p>
+            <p id="day-quote"></p>
+          </div>
+          <p class="hint home-presence" id="home-presence" hidden></p>
+          <p id="day-view-hint" class="hint day-view-hint" hidden></p>
+          <p id="day-count-badge" class="day-count-badge" hidden></p>
+          <div id="car-chip" class="car-chip">
+            <div class="car-chip-bar">
+              <button type="button" class="btn btn-car" id="btn-car">🚗 Mode voiture</button>
+              <button type="button" class="car-chip-toggle" id="btn-car-chip-toggle" aria-expanded="false" aria-controls="car-chip-panel" aria-label="Aperçu mode voiture">
+                <span class="car-chip-chevron" aria-hidden="true">▾</span>
+              </button>
+            </div>
+            <div id="car-chip-panel" class="car-chip-panel" hidden>
+              <p class="car-chip-line" id="car-chip-cur"><span>En cours</span> <strong id="car-chip-cur-name"></strong> <em id="car-chip-cur-cr"></em></p>
+              <p class="car-chip-alerte" id="car-chip-cur-alerte" hidden></p>
+              <p class="car-chip-line car-chip-next" id="car-chip-next"><span>Ensuite</span> <strong id="car-chip-next-name"></strong> <em id="car-chip-next-cr"></em></p>
+              <p class="car-chip-empty" id="car-chip-empty" hidden>Tournée terminée pour aujourd’hui</p>
+              <button type="button" class="btn btn-car-chip-go" id="btn-car-chip-go">➤ Y aller</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-ghost btn-add-home" id="btn-add-home" hidden>Installer l’appli</button>
+        </div>
+      </div>
+
+      <div id="install-banner" class="banner" hidden>
+        <p id="install-text"></p>
+        <button type="button" class="banner-x" id="install-dismiss" aria-label="Fermer">×</button>
+      </div>
+      <div id="offline-banner" class="banner" hidden>
+        <p id="offline-text">Hors ligne : tout reste lisible et modifiable sur ce téléphone.</p>
+      </div>
+      <div id="ordo-banner" class="banner banner-ordo" hidden>
+        <p id="ordo-banner-text"></p>
+        <button type="button" class="banner-x" id="ordo-banner-x" aria-label="Fermer">×</button>
+      </div>
+      <div id="rec-banner" class="banner banner-rec" hidden>
+        <p id="rec-banner-text"></p>
+        <button type="button" class="banner-x" id="rec-banner-x" aria-label="Fermer">×</button>
+      </div>
+      <div id="share-banner" class="banner muted" hidden>
+        <p>Partage indisponible, données sur ce téléphone</p>
+        <button type="button" class="banner-x" id="share-dismiss" aria-label="Fermer">×</button>
+      </div>
+      <div id="pane-tournee" class="pane">
+        <div id="onb-card" class="onb-card" hidden>
+          <p><strong>Ajoutez vos patients</strong><br>Un par un, ou en collant votre note.</p>
+          <button type="button" class="btn btn-primary" id="btn-onb-card">Ajouter mes patients</button>
+        </div>
+        <section id="tx-resume" class="tx-resume" hidden></section>
+
+        <main id="list" class="list" aria-live="polite"></main>
+
+        <div class="fab-bar" id="fab-bar">
+          <button type="button" class="btn btn-ghost fab" id="btn-carte">Carte</button>
+          <button type="button" class="btn btn-primary fab" id="btn-add">+ Patient</button>
+        </div>
+      </div>
+
+      <div id="pane-transmissions" class="pane" hidden>
+        <div class="tx-today-block">
+          <h2>Aujourd’hui</h2>
+          <p id="tx-today-label" class="tx-date"></p>
+          <div id="tx-today-list" class="tx-post-list msg-list"></div>
+          <textarea id="tx-today" class="tx-area" rows="4" placeholder="Clé, famille, à revoir demain… — pas de diagnostic."></textarea>
+          <div class="tx-composer-bar">
+            <button type="button" class="btn btn-primary" id="btn-tx-send">Envoyer</button>
+          </div>
+          <p class="hint">Écris ton mémo, puis Envoyer. Toi seule peux modifier ensuite. Pas un dossier médical.</p>
+        </div>
+        <div id="tx-history"></div>
+      </div>
+
+      <div id="pane-planning" class="pane" hidden>
+        <div class="plan-nav">
+          <button type="button" class="icon-btn" id="btn-plan-prev" aria-label="Mois précédent">‹</button>
+          <strong id="plan-month-label" class="plan-month"></strong>
+          <button type="button" class="icon-btn" id="btn-plan-next" aria-label="Mois suivant">›</button>
+        </div>
+        <div class="plan-weekdays" aria-hidden="true">
+          <span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span>
+        </div>
+        <div id="plan-grid" class="plan-grid"></div>
+      </div>
+
+      <div id="pane-messages" class="pane" hidden>
+        <p class="hint msg-hint">Fil du cabinet, chiffré. Pas un dossier médical.</p>
+        <div id="msg-list" class="msg-list"></div>
+        <div class="msg-stickers" id="msg-stickers" aria-label="Stickers"></div>
+        <p id="msg-voix-status" class="hint" hidden></p>
+        <div class="msg-composer" id="msg-composer">
+          <button type="button" class="icon-btn" id="btn-msg-voix" aria-label="Vocal">🎤</button>
+          <input id="msg-input" maxlength="400" placeholder="Écrire…" autocomplete="off" enterkeyhint="send">
+          <button type="button" class="btn btn-primary" id="btn-msg-send">Envoyer</button>
+        </div>
+      </div>
+
+      <nav id="tabbar" class="tabbar" aria-label="Onglets">
+        <button type="button" id="tab-tournee" class="active" aria-selected="true"><span class="tab-ico" aria-hidden="true">📋</span><span class="tab-lab">Vydel</span></button>
+        <button type="button" id="tab-transmissions" aria-selected="false"><span class="tab-ico" aria-hidden="true">📝</span><span class="tab-lab">Transmissions</span><span class="tab-badge" id="badge-tx" hidden></span></button>
+        <button type="button" id="tab-planning" aria-selected="false"><span class="tab-ico" aria-hidden="true">📅</span><span class="tab-lab">Planning</span></button>
+        <button type="button" id="tab-messages" aria-selected="false"><span class="tab-ico" aria-hidden="true">💬</span><span class="tab-lab">Messages</span><span class="tab-badge" id="badge-messages" hidden></span></button>
+      </nav>
+    </section>
+  </div>
+
+  <!-- Fiche patient -->
+  <div id="modal-patient" class="modal modal-fiche" hidden>
+    <div class="sheet sheet-fiche" role="dialog" aria-labelledby="patient-title">
+      <h2 id="patient-title">Patient</h2>
+      <div class="fiche-body">
+        <div class="fiche-tabs" id="fiche-tabs" role="tablist" aria-orientation="vertical" aria-label="Sections de la fiche">
+          <button type="button" role="tab" class="fiche-tab" id="ft-infos" data-tab="infos" aria-controls="fp-infos" aria-selected="true"><span class="ft-ico" aria-hidden="true">👤</span><span class="ft-lab">Infos</span></button>
+          <button type="button" role="tab" class="fiche-tab" id="ft-creneau" data-tab="creneau" aria-controls="fp-creneau" aria-selected="false" tabindex="-1"><span class="ft-ico" aria-hidden="true">🕒</span><span class="ft-lab">Créneau</span></button>
+          <button type="button" role="tab" class="fiche-tab" id="ft-ordo" data-tab="ordo" aria-controls="fp-ordo" aria-selected="false" tabindex="-1"><span class="ft-ico" aria-hidden="true">📄</span><span class="ft-lab">Ordo</span><span class="ft-dot" id="ft-dot-ordo" hidden></span></button>
+          <button type="button" role="tab" class="fiche-tab" id="ft-imp" data-tab="imp" aria-controls="fp-imp" aria-selected="false" tabindex="-1"><span class="ft-ico" aria-hidden="true">🔒</span><span class="ft-lab">Impératif</span></button>
+          <button type="button" role="tab" class="fiche-tab" id="ft-tx" data-tab="tx" aria-controls="fp-tx" aria-selected="false" tabindex="-1"><span class="ft-ico" aria-hidden="true">📝</span><span class="ft-lab">Transm.</span></button>
+          <button type="button" role="tab" class="fiche-tab" id="ft-photos" data-tab="photos" aria-controls="fp-photos" aria-selected="false" tabindex="-1"><span class="ft-ico" aria-hidden="true">📷</span><span class="ft-lab">Photos</span></button>
+          <button type="button" role="tab" class="fiche-tab" id="ft-alertes" data-tab="alertes" aria-controls="fp-alertes" aria-selected="false" tabindex="-1"><span class="ft-ico" aria-hidden="true">❗</span><span class="ft-lab">Alertes</span><span class="ft-dot" id="ft-dot-alerte" hidden></span></button>
+        </div>
+        <div class="fiche-panes" id="fiche-panes">
+          <section class="fiche-pane" role="tabpanel" id="fp-infos" aria-labelledby="ft-infos" tabindex="0">
+            <label for="f-prenom">Prénom</label>
+            <input id="f-prenom" maxlength="80" autocomplete="given-name">
+            <label for="f-nom">Nom</label>
+            <input id="f-nom" maxlength="80" autocomplete="family-name">
+            <label for="f-adresse">Adresse <span class="opt">(optionnel)</span></label>
+            <input id="f-adresse" maxlength="200" autocomplete="street-address">
+            <button type="button" class="btn btn-primary btn-yaller" id="btn-yaller">➤ Y aller</button>
+            <label for="f-tel">Téléphone</label>
+            <input id="f-tel" type="tel" maxlength="24" inputmode="tel" autocomplete="tel">
+            <p class="label">Téléphones famille</p>
+            <div id="f-famille"></div>
+            <button type="button" class="btn btn-ghost" id="btn-add-famille">+ N° famille</button>
+            <p class="hint">Jusqu’à 10 numéros (fille, fils, voisin…). Optionnel.</p>
+            <label for="f-medecin">Médecin traitant <span class="opt">(optionnel)</span></label>
+            <input id="f-medecin" maxlength="80" autocomplete="off">
+            <label for="f-medecin-tel">Téléphone médecin <span class="opt">(optionnel)</span></label>
+            <input id="f-medecin-tel" type="tel" maxlength="24" inputmode="tel" autocomplete="tel">
+            <div id="f-tour-wrap" hidden>
+              <label for="f-tour">Tournée</label>
+              <select id="f-tour">
+                <option value="both">Matin et soir</option>
+                <option value="am">Matin</option>
+                <option value="pm">Soir</option>
+              </select>
+            </div>
+            <p class="label">Jours de passage</p>
+            <div id="f-jours" class="jours"></div>
+            <p class="hint">Décochez les jours sans passage. Par défaut : tous les jours.</p>
+            <label for="f-remarques">Remarques <span class="opt">(optionnel)</span></label>
+            <input id="f-remarques" maxlength="200" placeholder="Interphone, chien, étage…">
+            <button type="button" class="btn btn-ghost" id="btn-toggle-actif" hidden>Mettre en inactif</button>
+            <button type="button" class="btn btn-danger" id="btn-delete-patient" hidden>Supprimer</button>
+          </section>
+          <section class="fiche-pane" role="tabpanel" id="fp-creneau" aria-labelledby="ft-creneau" tabindex="0" hidden>
+      <div class="fiche-block" id="cr-box">
+        <h3 class="fiche-h">Créneau de passage</h3>
+        <p class="hint">Par quarts d’heure. Le choix se fait ici, pas d’heure exacte.</p>
+        <div class="cr-tabs">
+          <button type="button" class="cr-tab" id="cr-tab-am" aria-pressed="true">Matin<small></small></button>
+          <button type="button" class="cr-tab" id="cr-tab-pm" aria-pressed="false">Après-midi<small></small></button>
+        </div>
+        <div class="cr-stepper">
+          <button type="button" class="cr-step" id="cr-prev" aria-label="Quart d’heure précédent">‹</button>
+          <div class="cr-val"><strong id="cr-value"></strong><small id="cr-range"></small></div>
+          <button type="button" class="cr-step" id="cr-next" aria-label="Quart d’heure suivant">›</button>
+        </div>
+        <button type="button" class="cr-none" id="cr-none">Sans heure précise</button>
+        <button type="button" class="cr-custom-open" id="cr-custom-open">+ Créneau personnalisé</button>
+        <div id="cr-custom" class="cr-custom" hidden>
+          <div class="cr-custom-row">
+            <label>Début<select id="cr-from"></select></label>
+            <label>Fin<select id="cr-to"></select></label>
+          </div>
+          <p id="cr-custom-error" class="error" hidden></p>
+          <div class="row-btns">
+            <button type="button" class="btn btn-primary" id="cr-custom-ok">Appliquer</button>
+            <button type="button" class="btn btn-ghost" id="cr-custom-cancel">Annuler</button>
+          </div>
+        </div>
+        <p class="cr-imp-line" id="cr-imp-line"></p>
+      </div>
+          </section>
+          <section class="fiche-pane" role="tabpanel" id="fp-ordo" aria-labelledby="ft-ordo" tabindex="0" hidden>
+            <h3 class="fiche-h">Ordonnance</h3>
+            <label for="f-ordo">Ordonnance 1 — date de fin</label>
+            <input id="f-ordo" type="date">
+            <label for="f-ordo2">Ordonnance 2 — date de fin (facultatif)</label>
+            <input id="f-ordo2" type="date">
+            <p class="hint">Rappel 7 jours avant la fin : bandeau dans l’appli et repère sur le patient dans la liste.</p>
+            <div id="ordo-states"></div>
+            <h3 class="fiche-h ordo-ph-h">Photos d’ordonnance</h3>
+            <p class="ph-lock" id="ordo-ph-lock">🔒 Chiffrées · partagées avec le cabinet</p>
+            <p class="hint" id="ordo-ph-hint">Visibles sur tous les téléphones du cabinet. Chiffrées avec la clé du cabinet et envoyées de téléphone à téléphone : rien n’est gardé sur les relais. Une photo arrive quand un téléphone qui l’a est en ligne en même temps. Effacées partout à la fin de l’ordonnance (date de fin indiquée sur la fiche), ou après 90 jours s’il n’y a pas de date. 6 photos maximum en tout, avec l’onglet Photos.</p>
+            <div id="ordo-ph-grid" class="ph-grid"></div>
+            <p id="ordo-ph-msg" class="hint" hidden></p>
+            <button type="button" class="btn btn-ghost" id="btn-ordo-ph-add">Ajouter une photo d’ordonnance</button>
+            <div id="ordo-ph-source" class="ph-source" hidden>
+              <button type="button" class="btn btn-primary" data-ph-src="camera">Prendre une photo</button>
+              <button type="button" class="btn btn-ghost" data-ph-src="gallery">Choisir dans la galerie</button>
+            </div>
+          </section>
+          <section class="fiche-pane" role="tabpanel" id="fp-imp" aria-labelledby="ft-imp" tabindex="0" hidden>
+            <h3 class="fiche-h">Impératif</h3>
+            <p class="hint">Un créneau impératif est prioritaire : il reste en place si vous réordonnez la tournée. Il se règle par demi-journée, sur le créneau choisi.</p>
+            <div id="imp-list" class="imp-list"></div>
+          </section>
+          <section class="fiche-pane" role="tabpanel" id="fp-tx" aria-labelledby="ft-tx" tabindex="0" hidden>
+            <h3 class="fiche-h">Transmissions</h3>
+            <label for="f-tx">Transmission du jour</label>
+            <textarea id="f-tx" class="tx-area tx-area-sm" rows="6" maxlength="800" placeholder="Relais du passage."></textarea>
+            <p class="hint">Résumé sur l’accueil, pour tout le cabinet.</p>
+          </section>
+          <section class="fiche-pane" role="tabpanel" id="fp-photos" aria-labelledby="ft-photos" tabindex="0" hidden>
+            <h3 class="fiche-h">Photos</h3>
+            <p class="ph-lock" id="ph-lock">🔒 Chiffrées · partagées avec le cabinet</p>
+            <p class="hint" id="ph-hint">Documents seulement (accès / clé, ordonnance, carte vitale), jamais le patient. Visibles sur tous les téléphones du cabinet, chiffrées, envoyées de téléphone à téléphone sans rester sur les relais. Ordonnance : effacée partout à la fin de l’ordonnance (90 jours sans date) ; accès / clé et carte vitale : après 90 jours (ou à la fin de l’ordonnance si plus tôt). 6 maximum.</p>
+            <div id="ph-grid" class="ph-grid"></div>
+            <p id="ph-msg" class="hint" hidden></p>
+            <button type="button" class="btn btn-primary" id="btn-ph-add">Ajouter une photo</button>
+            <div id="ph-types" class="ph-types" hidden>
+              <button type="button" class="btn btn-ghost" data-ph="acces">🔑 Accès / clé</button>
+              <button type="button" class="btn btn-ghost" data-ph="ordo">📄 Ordonnance</button>
+              <button type="button" class="btn btn-ghost" data-ph="vitale">💳 Carte vitale</button>
+            </div>
+            <div id="ph-source" class="ph-source" hidden>
+              <button type="button" class="btn btn-primary" data-ph-src="camera">Prendre une photo</button>
+              <button type="button" class="btn btn-ghost" data-ph-src="gallery">Choisir dans la galerie</button>
+            </div>
+            <input id="ph-input" type="file" accept="image/*" capture="environment" hidden>
+            <input id="ph-input-gallery" type="file" accept="image/*" multiple hidden>
+          </section>
+          <section class="fiche-pane" role="tabpanel" id="fp-alertes" aria-labelledby="ft-alertes" tabindex="0" hidden>
+            <h3 class="fiche-h">Alerte</h3>
+            <p class="hint">Un rappel court, affiché en rouge sur la liste à partir du jour choisi et tous les jours suivants, jusqu’à ce qu’on le retire (ex. « Prise de sang à jeun »).</p>
+            <label for="f-alerte">Texte</label>
+            <input id="f-alerte" maxlength="60" autocomplete="off" placeholder="Ex. Prise de sang à jeun">
+            <p class="al-count"><span id="f-alerte-count">0</span> / 60</p>
+            <label for="f-alerte-jour">À partir du</label>
+            <input id="f-alerte-jour" type="date">
+            <button type="button" class="btn btn-danger" id="btn-alerte-del">Supprimer l’alerte</button>
+          </section>
+        </div>
+      </div>
+      <div class="fiche-foot">
+        <p id="patient-error" class="error" hidden></p>
+        <div class="row-btns">
+          <button type="button" class="btn btn-primary" id="btn-save-patient">Enregistrer</button>
+          <button type="button" class="btn btn-ghost" id="btn-cancel-patient">Annuler</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-ph-view" class="modal modal-ph-view" hidden>
+    <img id="ph-view-img" alt="Photo de document (chiffrée)">
+    <p class="ph-view-hint">Toucher pour fermer</p>
+  </div>
+
+  <!-- Mode voiture (1.91) -->
+  <div id="car-mode" class="car-mode" role="dialog" aria-label="Mode voiture" hidden>
+    <div class="car-top">
+      <strong>🚗 Mode voiture</strong>
+      <span id="car-left" class="car-left"></span>
+      <button type="button" class="btn car-exit" id="btn-car-exit">Quitter</button>
+    </div>
+    <p id="car-wake" class="car-wake" hidden></p>
+    <section id="car-cur" class="car-card car-cur">
+      <p class="car-kicker">Patient en cours</p>
+      <p id="car-cur-name" class="car-name"></p>
+      <p id="car-cur-cr" class="car-cr"></p>
+      <p id="car-cur-alerte" class="car-alerte" hidden></p>
+      <p id="car-cur-adr" class="car-adr"></p>
+    </section>
+    <p id="car-empty" class="car-empty" hidden>Tournée terminée pour aujourd’hui 🎉</p>
+    <button type="button" class="btn car-go" id="btn-car-go">➤ Y aller</button>
+    <div class="car-row">
+      <button type="button" class="btn car-btn" id="btn-car-call">📞 Appeler</button>
+      <button type="button" class="btn car-btn car-done" id="btn-car-done">✓ Fait</button>
+      <button type="button" class="btn car-btn" id="btn-car-skip">Passer ›</button>
+    </div>
+    <section id="car-next" class="car-card car-next">
+      <p class="car-kicker">Ensuite</p>
+      <p id="car-next-name" class="car-name"></p>
+      <p id="car-next-cr" class="car-cr"></p>
+      <p id="car-next-alerte" class="car-alerte" hidden></p>
+      <p id="car-next-adr" class="car-adr"></p>
+    </section>
+  </div>
+
+  <!-- Choix GPS (Y aller) -->
+  <div id="modal-nav" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="nav-title">
+      <h2 id="nav-title">Y aller</h2>
+      <p id="nav-dest" class="hint">Ouvrir l’itinéraire</p>
+      <button type="button" class="nav-choice" data-nav="waze"><span class="nc-ico nc-waze">W</span>Waze</button>
+      <button type="button" class="nav-choice" data-nav="gmaps"><span class="nc-ico nc-gmaps">G</span>Google Maps</button>
+      <button type="button" class="nav-choice" data-nav="apple"><span class="nc-ico nc-apple">P</span>Plans</button>
+      <button type="button" class="nav-choice" data-nav="default"><span class="nc-ico nc-default">GPS</span>Par défaut</button>
+      <button type="button" class="btn btn-ghost" id="btn-nav-cancel">Annuler</button>
+    </div>
+  </div>
+
+  <!-- Menu -->
+  <div id="modal-menu" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="menu-title">
+      <h2 id="menu-title">Cabinet</h2>
+      <p id="menu-share" class="hint"></p>
+      <p id="menu-secu-status" class="hint" hidden></p>
+      <p id="menu-blob" class="mono" hidden></p>
+      <button type="button" class="btn btn-ghost" id="btn-retry-share" hidden>Réessayer le partage</button>
+      <button type="button" class="btn btn-ghost" id="btn-change-pin" hidden>Changer le PIN</button>
+      <button type="button" class="btn btn-ghost" id="btn-mon-prenom">Mon prénom</button>
+      <button type="button" class="btn btn-ghost" id="btn-invite-menu" hidden>Ajouter un membre</button>
+      <button type="button" class="btn btn-ghost" id="btn-staff" hidden>Personnes du cabinet</button>
+      <button type="button" class="btn btn-ghost" id="btn-secu" hidden>Sécuriser le cabinet</button>
+      <button type="button" class="btn btn-ghost" id="btn-beta-mint" hidden>Offrir un essai</button>
+      <button type="button" class="btn btn-ghost" id="btn-feedback">Question SAV</button>
+      <button type="button" class="btn btn-ghost" id="btn-tuto">Revoir le tuto</button>
+      <details id="menu-aide" class="menu-archives">
+        <summary>Aide</summary>
+        <button type="button" class="btn btn-ghost" id="btn-onb-replay">Revoir le tutoriel</button>
+        <button type="button" class="btn btn-ghost" id="btn-import-open">Importer mes patients</button>
+      </details>
+      <button type="button" class="btn btn-primary" id="btn-menu-update">Mettre à jour</button>
+      <button type="button" class="btn btn-ghost" id="btn-new-day" hidden>Nouvelle journée</button>
+      <button type="button" class="btn btn-ghost" id="btn-ask-notif">Notifications</button>
+      <button type="button" class="btn btn-ghost" id="btn-lock-2" hidden>Verrouiller</button>
+      <button type="button" class="btn btn-ghost" id="btn-cgu">Conditions d’utilisation</button>
+      <details id="menu-archives" class="menu-archives" hidden>
+        <summary>Archives</summary>
+        <p class="hint">Si le cabinet arrête Vydel, un administrateur télécharge ses données ici. Le fichier s’ouvre sur Mac ou PC, dans le navigateur. Il reste sur ton ordinateur. La synchro du cabinet reste chiffrée.</p>
+        <button type="button" class="btn btn-primary" id="btn-export-data">Télécharger mes données</button>
+        <button type="button" class="btn btn-ghost" id="btn-backup">Sauvegarder</button>
+        <button type="button" class="btn btn-ghost" id="btn-restore">Restaurer</button>
+        <input type="file" id="restore-file" accept="application/json,.json,.tournee" hidden>
+      </details>
+      <p class="hint" id="menu-trial" hidden></p>
+      <p class="hint" id="menu-ver">Vydel</p>
+      <p class="hint copy" id="menu-copy">© 2026 Orva Labs. Tous droits réservés.</p>
+      <button type="button" class="btn btn-primary" id="btn-close-menu">Fermer</button>
+    </div>
+  </div>
+
+
+  <!-- Sécurité du cabinet (1.91) -->
+  <div id="modal-secu" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="secu-title">
+      <h2 id="secu-title">Sécurité du cabinet</h2>
+      <p id="secu-text" class="hint"></p>
+      <p id="secu-list" class="hint" style="white-space:pre-line"></p>
+      <button type="button" class="btn btn-primary" id="btn-secu-go" hidden>Sécuriser le cabinet</button>
+      <button type="button" class="btn btn-ghost" id="btn-secu-invite" hidden>Inviter un téléphone</button>
+      <button type="button" class="btn btn-ghost" id="btn-secu-close-old" hidden>Terminer la transition maintenant</button>
+      <p id="secu-rec-status" class="hint" hidden></p>
+      <button type="button" class="btn btn-ghost" id="btn-secu-rec" hidden>Créer un code de récupération</button>
+      <div id="secu-paste" hidden>
+        <label for="secu-invite-input">Lien d’invitation reçu (si on vous l’a demandé)</label>
+        <input id="secu-invite-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Collez le lien reçu">
+        <button type="button" class="btn btn-ghost" id="btn-secu-use-invite">Utiliser l’invitation</button>
+      </div>
+      <button type="button" class="btn btn-primary" id="btn-secu-done">Fermer</button>
+    </div>
+  </div>
+
+  <!-- Offrir un essai (administrateurs) -->
+  <div id="modal-beta" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="beta-title">
+      <h2 id="beta-title">Offrir un essai</h2>
+      <label for="trial-to" class="invite-for-label">Prénom de l’IDEL invitée</label>
+      <input id="trial-to" maxlength="24" autocomplete="off" autocapitalize="words" placeholder="Prénom (ex. Julie)">
+      <button type="button" class="btn btn-primary" id="btn-beta-gen">Offrir un essai de 14 jours</button>
+      <p class="hint" id="trial-sub">Pour faire découvrir Vydel à une autre IDEL. L'accès est personnel et vous pouvez l'annuler à tout moment.</p>
+      <p id="trial-error" class="error" hidden></p>
+      <p id="beta-preview" class="invite-preview" hidden></p>
+      <div class="row-btns" id="beta-actions" hidden>
+        <button type="button" class="btn btn-ghost" id="btn-beta-copy">Copier</button>
+        <button type="button" class="btn btn-primary" id="btn-beta-share">Envoyer</button>
+      </div>
+      <h3 class="membres-h">Essais envoyés</h3>
+      <div id="trial-list" class="staff-list"></div>
+      <button type="button" class="btn btn-ghost" id="btn-close-beta">Fermer</button>
+    </div>
+  </div>
+
+  <!-- Personnes du cabinet (admins) -->
+  <div id="modal-staff" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="staff-title">
+      <h2 id="staff-title">Personnes du cabinet</h2>
+      <p id="staff-hint" class="hint">Retirer cache la tournée à cette personne. Pour un stagiaire, changez aussi le PIN.</p>
+      <div id="seat-add" hidden>
+        <h3 class="membres-h">Ajouter une personne</h3>
+        <label for="seat-name">Prénom</label>
+        <input id="seat-name" maxlength="24" autocomplete="off" placeholder="Prénom">
+        <label for="seat-role">Rôle</label>
+        <select id="seat-role">
+          <option value="collab">Collaborateur (remplaçant)</option>
+          <option value="admin">Administrateur</option>
+        </select>
+        <button type="button" class="btn btn-primary" id="btn-seat-add">Ajouter</button>
+        <p id="seat-count" class="hint"></p>
+      </div>
+      <h3 class="membres-h">Ajouter un membre</h3>
+      <p class="hint">Génère une invitation à envoyer (WhatsApp, SMS…). Le PIN se donne en personne, jamais dans le message.</p>
+      <label for="invite-for" class="invite-for-label">Pour qui ? (facultatif)</label>
+      <input id="invite-for" maxlength="24" autocomplete="off" autocapitalize="words" placeholder="Prénom (ex. Léa)">
+      <button type="button" class="btn btn-primary" id="btn-invite">Créer une invitation</button>
+      <p id="invite-preview" class="invite-preview" hidden></p>
+      <div class="row-btns" id="invite-actions" hidden>
+        <button type="button" class="btn btn-ghost" id="btn-invite-copy">Copier</button>
+        <button type="button" class="btn btn-primary" id="btn-invite-share">Envoyer</button>
+      </div>
+      <div id="invite-list" class="invite-list"></div>
+      <h3 class="membres-h">Personnes</h3>
+      <div id="staff-list" class="staff-list"></div>
+      <button type="button" class="btn btn-ghost" id="btn-close-staff">Fermer</button>
+    </div>
+  </div>
+
+  <!-- Accès retiré -->
+  <div id="modal-kicked" class="modal modal-center" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="kicked-title">
+      <h2 id="kicked-title">Accès retiré</h2>
+      <p id="kicked-text">Un administrateur a retiré cet accès.</p>
+      <button type="button" class="btn btn-primary" id="btn-kicked-ok">OK</button>
+    </div>
+  </div>
+
+  <!-- Mise à jour -->
+  <div id="modal-update" class="modal modal-center" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="update-title">
+      <h2 id="update-title">Nouvelle version</h2>
+      <p id="update-text">Nouvelle version disponible.</p>
+      <p class="hint">Les patients restent.</p>
+      <div class="row-btns">
+        <button type="button" class="btn btn-primary" id="btn-update">Actualiser</button>
+        <button type="button" class="btn btn-ghost" id="btn-update-later">Plus tard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation -->
+  <div id="modal-invite-resend" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="resend-title">
+      <h2 id="resend-title">Renvoyer l’invitation</h2>
+      <p id="resend-text"></p>
+      <p id="resend-meta" class="hint"></p>
+      <p class="resend-note">Vérifiez le destinataire dans WhatsApp ou SMS avant d’envoyer.</p>
+      <div class="row-btns">
+        <button type="button" class="btn btn-primary" id="btn-resend-yes">Oui, renvoyer</button>
+        <button type="button" class="btn btn-ghost" id="btn-resend-no">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Code de récupération : affichage unique -->
+  <div id="modal-rec" class="modal modal-top" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="rec-title">
+      <h2 id="rec-title">Code de récupération</h2>
+      <div id="rec-step-show">
+        <p class="hint">Il permet de choisir un nouveau PIN si le PIN est oublié, sans perdre les données. <strong>Notez-le sur papier</strong> et rangez-le à part du PIN. Il ne sera plus jamais affiché.</p>
+        <p id="rec-code" class="rec-code" aria-live="polite"></p>
+        <details class="rec-mail-box">
+          <summary>M’envoyer le code par e-mail (facultatif)</summary>
+          <label for="rec-mail">Votre adresse e-mail</label>
+          <input id="rec-mail" type="email" autocomplete="email" inputmode="email" placeholder="vous@exemple.fr">
+          <p id="rec-mail-error" class="error" hidden></p>
+          <button type="button" class="btn btn-ghost" id="btn-rec-mail">M’envoyer le code par e-mail</button>
+          <p class="hint">Ouvre votre messagerie avec le code seul (ni PIN, ni nom de cabinet, ni données). Gardez ce mail, ne le transférez pas.</p>
+        </details>
+        <button type="button" class="btn btn-primary" id="btn-rec-noted">J’ai noté le code</button>
+      </div>
+      <div id="rec-step-check" hidden>
+        <p class="hint">Pour vérifier, retapez les <strong>4 derniers caractères</strong> du code.</p>
+        <input id="rec-check-input" class="rec-check-input" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="• • • •">
+        <p id="rec-check-error" class="error" hidden></p>
+        <div class="row-btns">
+          <button type="button" class="btn btn-primary" id="btn-rec-check">Valider</button>
+          <button type="button" class="btn btn-ghost" id="btn-rec-back">Revoir le code</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIN oublié : saisie du code -->
+  <div id="modal-rec-use" class="modal modal-top" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="rec-use-title">
+      <h2 id="rec-use-title">PIN oublié</h2>
+      <p class="hint">Saisissez le code de récupération remis à l’administrateur (24 caractères). Vous choisirez ensuite un nouveau PIN. Les données restent.</p>
+      <label for="rec-use-input">Code de récupération</label>
+      <input id="rec-use-input" class="rec-use-input" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX XXXX XXXX XXXX XXXX XXXX">
+      <p id="rec-use-error" class="error" hidden></p>
+      <div class="row-btns">
+        <button type="button" class="btn btn-primary" id="btn-rec-use-go">Valider</button>
+        <button type="button" class="btn btn-ghost" id="btn-rec-use-cancel">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1.99 — Ouverture du cabinet (tutoriel) et « Importer mes patients ». Tout se passe sur le téléphone. -->
+  <div id="modal-import" class="modal modal-onb" hidden>
+    <div class="sheet sheet-onb" role="dialog" aria-labelledby="onb-title" aria-modal="true">
+      <div class="onb-top">
+        <button type="button" class="linkish onb-back" id="btn-onb-back" hidden>‹ Retour</button>
+        <p class="onb-stepn" id="onb-stepn"></p>
+        <button type="button" class="linkish onb-skip" id="btn-onb-skip">Passer</button>
+      </div>
+      <h2 id="onb-title">Bienvenue dans votre cabinet</h2>
+
+      <section class="onb-step" data-step="welcome">
+        <p class="lede">Ajoutons vos patients. Quelques minutes suffisent, et tout reste chiffré sur vos téléphones.</p>
+        <button type="button" class="btn btn-primary" id="btn-onb-start">Commencer</button>
+      </section>
+
+      <section class="onb-step" data-step="choice" hidden>
+        <p class="lede">Quelques patients : saisissez-les un par un. Vous avez déjà une liste : collez votre note.</p>
+        <button type="button" class="btn btn-primary onb-choice" id="btn-onb-manual"><span class="onb-choice-t">Saisir mes patients un par un</span><span class="onb-choice-s">Quelques patients, ou pas de liste prête</span></button>
+        <button type="button" class="btn btn-primary onb-choice" id="btn-onb-paste"><span class="onb-choice-t">Coller ma note</span><span class="onb-choice-s">Ouvrir mon cabinet avec une note : une liste déjà prête dans Notes, un SMS, un mail ou une page imprimée</span></button>
+        <button type="button" class="linkish" id="btn-onb-file">Importer un fichier Excel ou CSV</button>
+        <button type="button" class="linkish" id="btn-onb-later">Plus tard</button>
+      </section>
+
+      <section class="onb-step" data-step="a1" hidden>
+        <p class="lede">Son nom et son prénom.</p>
+        <label for="onb-prenom">Prénom</label>
+        <input id="onb-prenom" maxlength="80" autocomplete="off">
+        <label for="onb-nom">Nom</label>
+        <input id="onb-nom" maxlength="80" autocomplete="off">
+        <p id="onb-a-error" class="error" hidden></p>
+        <button type="button" class="btn btn-primary" id="btn-onb-a1">Suivant</button>
+        <button type="button" class="btn btn-ghost" id="btn-onb-contacts" hidden>Choisir dans mes contacts</button>
+        <p class="hint" id="onb-contacts-ios" hidden>Sur iPhone : ouvrez la fiche du contact, copiez-la, puis utilisez « Coller ma note ».</p>
+      </section>
+
+      <section class="onb-step" data-step="a2" hidden>
+        <p class="lede">Rue, code postal et ville. Vydel s’en sert pour le trajet.</p>
+        <label for="onb-adresse">Adresse</label>
+        <input id="onb-adresse" maxlength="200" autocomplete="off" placeholder="12 rue des Lilas, 06000 Nice">
+        <button type="button" class="btn btn-primary" id="btn-onb-a2">Suivant</button>
+      </section>
+
+      <section class="onb-step" data-step="a3" hidden>
+        <p class="lede">Facultatif, pour l’appeler en un geste.</p>
+        <label for="onb-tel">Téléphone</label>
+        <input id="onb-tel" type="tel" inputmode="tel" maxlength="24" autocomplete="off" placeholder="06 …">
+        <button type="button" class="btn btn-primary" id="btn-onb-a3">Suivant</button>
+        <button type="button" class="btn btn-ghost" id="btn-onb-notel">Pas de numéro</button>
+      </section>
+
+      <section class="onb-step" data-step="a4" hidden>
+        <p class="lede">Touchez les jours de passage, puis le matin ou l’après-midi. Cochez « impératif » si l’heure compte.</p>
+        <div id="onb-jours" class="jours"></div>
+        <div class="onb-halves">
+          <button type="button" class="scope-btn" id="onb-am" aria-pressed="false">Matin</button>
+          <button type="button" class="scope-btn" id="onb-pm" aria-pressed="false">Après-midi</button>
+        </div>
+        <label for="onb-heure">Heure <span class="opt">(facultatif)</span></label>
+        <input id="onb-heure" type="time" step="900">
+        <label class="onb-check"><input type="checkbox" id="onb-imp"> Impératif</label>
+        <button type="button" class="btn btn-primary" id="btn-onb-a4">Suivant</button>
+      </section>
+
+      <section class="onb-step" data-step="a5" hidden>
+        <p class="lede">Facultatif : code de porte, fin d’ordonnance.</p>
+        <label for="onb-rem">Remarque</label>
+        <input id="onb-rem" maxlength="200" autocomplete="off" placeholder="Code porte, étage, chien…">
+        <label for="onb-ordo">Fin d’ordonnance <span class="opt">(facultatif)</span></label>
+        <input id="onb-ordo" type="date">
+        <button type="button" class="btn btn-primary" id="btn-onb-a5">Enregistrer</button>
+      </section>
+
+      <section class="onb-step" data-step="a6" hidden>
+        <p class="lede" id="onb-a6-text">Il est dans votre tournée.</p>
+        <button type="button" class="btn btn-primary" id="btn-onb-next-patient">Ajouter le suivant</button>
+        <button type="button" class="btn btn-ghost" id="btn-onb-a-done">J’ai fini</button>
+      </section>
+
+      <section class="onb-step" data-step="b1" hidden>
+        <p class="lede">Un patient par paragraphe, une ligne vide entre deux. Dans l’ordre : nom, adresse, téléphone, jours et heure, fin d’ordonnance.</p>
+        <p class="label">Exemple (fictif)</p>
+        <pre class="onb-example" id="onb-example"></pre>
+        <p class="hint">Une page imprimée ou une photo n’est pas lue : copiez son texte (sélection de texte du téléphone), puis collez-le.</p>
+        <button type="button" class="btn btn-primary" id="btn-onb-b1">Ma note est prête</button>
+        <button type="button" class="btn btn-ghost" id="btn-onb-copy-ex">Copier l’exemple</button>
+      </section>
+
+      <section class="onb-step" data-step="b2" hidden>
+        <p class="lede">Dans Notes ou vos SMS : appui long, Tout sélectionner, Copier, puis revenez ici.</p>
+        <ul class="onb-howto">
+          <li id="onb-howto-ios"><strong>iPhone</strong> : ouvrez la note, appui long sur le texte → Tout sélectionner → Copier. Revenez dans Vydel.</li>
+          <li id="onb-howto-android"><strong>Android</strong> : appui long sur un mot → Tout sélectionner → Copier. Revenez dans Vydel.</li>
+        </ul>
+        <button type="button" class="btn btn-primary" id="btn-onb-b2">C’est copié</button>
+      </section>
+
+      <section class="onb-step" data-step="b3" hidden>
+        <p class="lede">Rien ne quitte votre téléphone.</p>
+        <textarea id="onb-paste" class="tx-area onb-paste" rows="9" placeholder="Appui long ici → Coller" spellcheck="false" autocomplete="off"></textarea>
+        <p id="onb-b3-error" class="error" hidden></p>
+        <button type="button" class="btn btn-ghost" id="btn-onb-clip">Coller</button>
+        <button type="button" class="btn btn-primary" id="btn-onb-parse">Analyser</button>
+      </section>
+
+      <section class="onb-step" data-step="file" hidden>
+        <p class="lede">Le fichier est lu sur ce téléphone. Il n’est envoyé nulle part.</p>
+        <input type="file" id="onb-file-input" accept=".csv,.txt,.tsv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+        <button type="button" class="btn btn-ghost" id="btn-onb-file-pick">Choisir le fichier</button>
+        <p class="hint" id="onb-file-name"></p>
+        <p id="onb-file-error" class="error" hidden></p>
+        <div id="onb-map" class="onb-map" hidden></div>
+        <button type="button" class="btn btn-primary" id="btn-onb-file-go" hidden>Lire les patients</button>
+        <p class="hint">Excel : si le fichier .xlsx n’est pas lu, enregistrez-le en CSV depuis Excel (Fichier → Enregistrer sous → CSV). Pensez à supprimer le fichier de vos téléchargements après l’import.</p>
+      </section>
+
+      <section class="onb-step" data-step="b4" hidden>
+        <p class="lede" id="onb-b4-sum"></p>
+        <div id="onb-review" class="onb-review"></div>
+        <button type="button" class="btn btn-primary" id="btn-onb-b4">Tout est bon</button>
+      </section>
+
+      <section class="onb-step" data-step="b5" hidden>
+        <p class="lede">Ces patients ressemblent à des fiches existantes ou se répètent dans la note.</p>
+        <div id="onb-dups" class="onb-review"></div>
+        <button type="button" class="btn btn-primary" id="btn-onb-b5">Enregistrer</button>
+      </section>
+
+      <section class="onb-step" data-step="b6" hidden>
+        <p class="lede" id="onb-b6-text"></p>
+        <button type="button" class="btn btn-primary" id="btn-onb-b6">Continuer</button>
+      </section>
+
+      <section class="onb-step" data-step="end" hidden>
+        <p class="lede">Vous pourrez revoir ce tutoriel dans Menu → Aide.</p>
+        <button type="button" class="btn btn-primary" id="btn-onb-end">Voir ma tournée</button>
+      </section>
+    </div>
+  </div>
+
+  <div id="modal-confirm" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Confirmer</h2>
+      <p id="confirm-text"></p>
+      <div class="row-btns">
+        <button type="button" class="btn btn-danger" id="confirm-yes">Confirmer</button>
+        <button type="button" class="btn btn-ghost" id="confirm-no">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tuto guidé -->
+  <div id="modal-tuto" class="tuto-spot" hidden>
+    <div id="tuto-hole" class="tuto-hole" hidden></div>
+    <div class="tuto-card" id="tuto-card" role="dialog" aria-labelledby="tuto-title">
+      <p class="hint" id="tuto-stepn"></p>
+      <h2 id="tuto-title"></h2>
+      <p id="tuto-text"></p>
+      <div class="row-btns">
+        <button type="button" class="btn btn-primary" id="btn-tuto-next">Suivant</button>
+        <button type="button" class="btn btn-ghost" id="btn-tuto-skip">Passer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Installer iPhone -->
+  <div id="modal-ios-install" class="modal modal-center" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="ios-install-title">
+      <h2 id="ios-install-title">Sur iPhone</h2>
+      <ol class="ios-steps">
+        <li>Dans Safari, touchez le bouton <strong>Partager</strong> (carré avec une flèche vers le haut ; s’il n’est pas visible, il est dans le menu ⋯)</li>
+        <li><strong>Sur l’écran d’accueil</strong> (faites défiler la liste si besoin)</li>
+        <li><strong>Ajouter</strong></li>
+      </ol>
+      <p class="hint">Safari uniquement — pas Chrome. Ça ne se fait pas tout seul : ce sont ces 3 touches.</p>
+      <button type="button" class="btn btn-primary" id="btn-ios-install-ok">OK</button>
+    </div>
+  </div>
+
+  <!-- Question SAV -->
+  <div id="modal-feedback" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="feedback-title">
+      <h2 id="feedback-title">Question SAV</h2>
+      <p class="hint" id="feedback-hint">Une idée, un truc à changer, un bug. Ça part au développeur par e-mail (non chiffré) : n’écrivez aucun nom ni info de patient.</p>
+      <div id="feedback-list" class="feedback-list"></div>
+      <label for="f-feedback">Votre idée</label>
+      <textarea id="f-feedback" class="tx-area" rows="4" maxlength="400" placeholder="Moi je voudrais… / ce serait bien d’enlever…"></textarea>
+      <div class="row-btns">
+        <button type="button" class="btn btn-primary" id="btn-send-feedback">Envoyer</button>
+        <button type="button" class="btn btn-ghost" id="btn-close-feedback">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prénom (ce téléphone) -->
+  <div id="modal-prenom" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="prenom-title">
+      <h2 id="prenom-title">Mon prénom</h2>
+      <p class="hint" id="prenom-hint">Affiché dans le fil du cabinet, sur ce téléphone.</p>
+      <label for="f-display-name">Prénom</label>
+      <input id="f-display-name" maxlength="24" placeholder="Prénom" autocomplete="given-name">
+      <div class="row-btns">
+        <button type="button" class="btn btn-primary" id="btn-save-prenom">Enregistrer</button>
+        <button type="button" class="btn btn-ghost" id="btn-cancel-prenom">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permission notifications -->
+  <div id="modal-notif" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="notif-title">
+      <h2 id="notif-title">Notifications</h2>
+      <p>Autoriser les alertes pour savoir quand une associée coche « Fait ». Aucun nom n’est envoyé à un service tiers — tout reste dans le partage chiffré.</p>
+      <p class="hint">Sur iPhone, les notifications ne fonctionnent qu’après « Sur l’écran d’accueil ».</p>
+      <div class="row-btns">
+        <button type="button" class="btn btn-primary" id="notif-allow">Autoriser</button>
+        <button type="button" class="btn btn-ghost" id="notif-later">Plus tard</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-map" class="modal" hidden>
+    <div class="sheet sheet-map" role="dialog" aria-labelledby="map-title">
+      <h2 id="map-title">Carte de la tournée</h2>
+      <p id="map-hint" class="hint">Épingles d’après les adresses. L’adresse passe par OpenStreetMap pour le placement.</p>
+      <div id="tournee-map"></div>
+      <p id="map-miss" class="hint" hidden></p>
+      <div class="row-btns">
+        <button type="button" class="btn btn-ghost" id="btn-map-itin">Itinéraire</button>
+        <button type="button" class="btn btn-primary" id="btn-close-map">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-planning" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="plan-title">
+      <h2 id="plan-title">Planning</h2>
+      <p id="plan-date" class="lede"></p>
+      <label for="plan-name">Qui travaille</label>
+      <input id="plan-name" maxlength="40" placeholder="Prénom" autocomplete="off">
+      <p class="label">Passages faits</p>
+      <div id="plan-fait-list" class="plan-fait-list"></div>
+      <p class="hint" id="plan-fait-hint">Les cases Fait de ce jour. L’historique commence à partir de v24.</p>
+      <p class="label">Transmission du jour</p>
+      <p id="plan-tx-text" class="plan-tx-text"></p>
+      <div id="plan-voix-list" class="voix-list"></div>
+      <div class="row-btns">
+        <button type="button" class="btn btn-primary" id="btn-plan-save">Enregistrer</button>
+        <button type="button" class="btn btn-ghost" id="btn-plan-cancel">Annuler</button>
+      </div>
+      <button type="button" class="btn btn-ghost" id="btn-plan-clear">Effacer</button>
+    </div>
+  </div>
+
+  
+  <div id="modal-tx-rapide" class="modal" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="tx-rapide-title">
+      <h2 id="tx-rapide-title">Transmission rapide</h2>
+      <p id="tx-rapide-patient" class="lede"></p>
+      <label for="tx-rapide-text">Message</label>
+      <textarea id="tx-rapide-text" class="tx-area" rows="4" maxlength="800" placeholder="Relais du passage — pas de diagnostic."></textarea>
+      <p class="hint">Mémo écrit. Visible dans Transmissions, sur ce patient.</p>
+      <div class="row-btns">
+        <button type="button" class="btn btn-primary" id="btn-tx-rapide-send">Envoyer</button>
+        <button type="button" class="btn btn-ghost" id="btn-tx-rapide-cancel">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+<div id="toast" class="toast" hidden role="status"></div>
+
+  <script src="./js/leaflet.js?v=1.99.2-app"></script>
+  <script src="./js/mqtt.min.js?v=1.99.2-app"></script>
+  <script src="./js/mqtt-lite.js?v=1.99.2-app"></script>
+  <script src="./js/import.js?v=1.99.2-app"></script>
+  <script src="./js/app.js?v=1.99.2-app" defer></script>
+</body>
+</html>

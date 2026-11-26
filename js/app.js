@@ -67,6 +67,7 @@
   /* 1.99.6 : stockage aveugle des photos de documents (Cloudflare Worker vydel-photos + KV, CORS https://app.vydel.fr).
      Vide = comportement d’avant (téléphone à téléphone uniquement). */
   var PH_CLOUD_URL = "https://vydel-photos.vydel-push.workers.dev";
+  var LS_PUSH_ASK_RE = "tournee.pushAskRe"; /* « 1 » : choix « allow » mais abonnement absent → fenêtre déjà réaffichée une fois */
   var LS_PUSH_ASK = "tournee.pushAsk"; /* « allow » | « deny » : choix fait dans la fenêtre d’ouverture, plus jamais redemandé */
   var MQTT_URLS = ["wss://broker.hivemq.com:8884/mqtt", "wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt"];
   var voiceBlobs = {};
@@ -6483,13 +6484,23 @@
   function pushAskChoice() {
     try { return localStorage.getItem(LS_PUSH_ASK) || ""; } catch (e) { return ""; }
   }
+  /* Proposée tant que ce téléphone n’est pas abonné : permission « default » OU déjà « granted » (ancien bouton
+     « Notifications ») sans abonnement. Jamais si la permission est refusée dans le navigateur, ni après « Refuser ».
+     Choix « allow » mais abonnement absent/expiré : réaffichée une seule fois. */
   function pushAskEligible() {
-    if (pushAskShown || pushAskChoice()) return false;
+    if (pushAskShown) return false;
     if (!pushSupported() || !unlocked || !secu || isKicked()) return false;
-    if (Notification.permission !== "default") return false;
-    if (pushLoad().on) return false;
+    if (Notification.permission === "denied") return false;
     if (pushIsIos() && !pushIsStandalone()) return false; /* iPhone hors écran d’accueil : impossible, on ne propose pas */
+    var c = pushAskChoice();
+    if (c === "deny") return false;
+    if (c === "allow") { try { if (localStorage.getItem(LS_PUSH_ASK_RE)) return false; } catch (e) { return false; } }
     return true;
+  }
+  /* Abonnement réel de ce téléphone (l’état local peut dire « on » alors que le navigateur l’a perdu). */
+  async function pushHasSub() {
+    if (!pushLoad().on) return false;
+    try { var reg = await navigator.serviceWorker.ready; return !!(await reg.pushManager.getSubscription()); } catch (e) { return false; }
   }
   function screenBusy() {
     if (!$("screen-app") || $("screen-app").hidden) return true;
@@ -6507,7 +6518,12 @@
       if (calm < 3) return; /* écran libre depuis 1,5 s */
       clearInterval(pushAskTimer); pushAskTimer = null;
       pushAskShown = true;
-      $("modal-push-ask").hidden = false;
+      pushHasSub().then(function (has) {
+        if (has) return; /* déjà abonné : rien à proposer */
+        if (screenBusy()) { pushAskShown = false; schedulePushAsk(); return; } /* une autre fenêtre s’est ouverte entre-temps */
+        if (pushAskChoice() === "allow") { try { localStorage.setItem(LS_PUSH_ASK_RE, "1"); } catch (e) {} }
+        $("modal-push-ask").hidden = false;
+      });
     }, 500);
   }
   if ($("push-ask-allow")) $("push-ask-allow").addEventListener("click", function () {

@@ -1608,7 +1608,73 @@
     return e;
   }
 
-  var INVITE_REFUSED_MSG = "Cette invitation a déjà servi ou n’est plus valable. Demandez-en une nouvelle à un administrateur du cabinet.";
+  var INVITE_REFUSED_MSG = "Cette invitation a déjà servi ou n’est plus valable. Demandez-en une nouvelle à un administrateur du cabinet. Si le lien vient d’être créé : la personne qui l’a envoyé ouvre Vydel avec Internet quelques secondes, puis réessayez.";
+  /* 1.99.4 : causes distinguées quand on rejoint avec une invitation */
+  var JOIN_MSG = {
+    net: "Impossible de rejoindre : aucun relais Vydel joignable depuis ce téléphone. Vérifiez Internet (essayez en 4G si vous êtes en Wi-Fi), puis réessayez.",
+    empty: "Impossible de rejoindre : le cabinet n’est pas encore visible sur les relais. Demandez à la personne qui vous a invité(e) d’ouvrir Vydel avec Internet, puis réessayez dans une minute.",
+    key: "Impossible de rejoindre : ce lien ne correspond plus au cabinet (il a peut-être été re-sécurisé). Demandez un nouveau lien d’invitation.",
+    other: "Impossible de rejoindre. Vérifiez Internet, puis réessayez."
+  };
+  function joinErr(code) { var e = new Error(code); e.code = code; return e; }
+
+  /* 1.99.4 : lit l’état chiffré sur TOUS les relais en parallèle (et non plus l’un après l’autre, 9 s chacun).
+     Rejette avec code "net" (aucun relais joint) ou "empty" (relais joints, mais aucun état du cabinet). */
+  function peekAllRelays(id, ms) {
+    return new Promise(function (resolve, reject) {
+      if (!window.mqtt || !mqtt.connect) {
+        waitMqttEnv(id, ms).then(function (env) { resolve({ env: env, relay: -1 }); }, function () { reject(joinErr("other")); });
+        return;
+      }
+      var full = "tournee/" + id, clients = [], connected = 0, done = false;
+      function finish(err, res) {
+        if (done) return;
+        done = true;
+        clearTimeout(to);
+        clients.forEach(function (c) { try { c.end(true); } catch (eE) {} });
+        if (err) reject(err); else resolve(res);
+      }
+      var to = setTimeout(function () { finish(joinErr(connected ? "empty" : "net")); }, ms || 25000);
+      MQTT_URLS.forEach(function (url, i) {
+        var c;
+        try {
+          c = mqtt.connect(url, { protocolVersion: 4, connectTimeout: 10000, reconnectPeriod: 3000, clean: true, clientId: "t" + Math.random().toString(16).slice(2, 10) });
+        } catch (eC) { return; }
+        clients.push(c);
+        var was = false;
+        c.on("connect", function () { if (!was) { was = true; connected++; } try { c.subscribe(full); } catch (eS) {} });
+        c.on("message", function (t, payload) {
+          if (String(t) !== full) return;
+          try {
+            var env = JSON.parse(payloadToText(payload) || "{}");
+            if (env && env.ct && !env.kind) finish(null, { env: env, relay: i });
+          } catch (eP) {}
+        });
+        c.on("error", function () {});
+      });
+    });
+  }
+
+  /* 1.99.4 : après une invitation, copie l’état chiffré (retained) sur chaque relais, pour que l’invité(e)
+     le trouve même si son réseau n’atteint pas le même relais que ce téléphone. */
+  function fanoutRetained() {
+    if (!secu || !window.mqtt || !mqtt.connect) return Promise.resolve(0);
+    return sealState(state).then(function (env) {
+      var text = JSON.stringify(env), full = "tournee/" + secu.topic;
+      return Promise.all(MQTT_URLS.map(function (url) {
+        return new Promise(function (res) {
+          var c, over = false;
+          var end = function (ok) { if (over) return; over = true; clearTimeout(tm); try { c.end(true); } catch (eE) {} res(ok ? 1 : 0); };
+          var tm = setTimeout(function () { end(false); }, 15000);
+          try {
+            c = mqtt.connect(url, { protocolVersion: 4, connectTimeout: 10000, reconnectPeriod: 0, clean: true, clientId: "t" + Math.random().toString(16).slice(2, 10) });
+          } catch (eC) { end(false); return; }
+          c.on("connect", function () { c.publish(full, text, { retain: true, qos: 1 }, function (err) { end(!err); }); });
+          c.on("error", function () {});
+        });
+      }));
+    }).then(function (r) { return r.reduce(function (a, b) { return a + b; }, 0); }).catch(function () { return 0; });
+  }
 
   /* Lit une fois l’état chiffré d’un sujet, sur une connexion à part (ne touche pas la connexion en cours). */
   function peekMqttEnv(id, ms, sub, want) {
@@ -1661,9 +1727,11 @@
     var ckRaw;
     try { ckRaw = await unwrapWithPin(inv.w, pin); } catch (eW) { var ep = new Error("pin"); ep.code = "pin"; throw ep; }
     var ck = await importAes(ckRaw);
-    var env = await waitMqttEnv(inv.topic, 15000);
-    if (!env || !env.ct) throw new Error("format");
-    var data = normState(await decryptEnvelope(env, ck));
+    var got = await peekAllRelays(inv.topic, 25000);
+    var env = got.env;
+    if (!env || !env.ct) throw joinErr("empty");
+    var data;
+    try { data = normState(await decryptEnvelope(env, ck)); } catch (eD) { throw joinErr("key"); }
     /* Usage unique : rien n’est enregistré sur ce téléphone si l’invitation est absente, utilisée ou révoquée. */
     if (!findLiveInvite(data, inv.code)) throw inviteRefused();
     markInviteUsed(data, inv.code);
@@ -2489,7 +2557,7 @@
           ? "PIN incorrect pour cette invitation."
           : (eI && eI.code === "used")
             ? INVITE_REFUSED_MSG
-            : "Impossible de rejoindre. Vérifiez Internet, puis réessayez.";
+            : (JOIN_MSG[eI && eI.code] || JOIN_MSG.other);
         err.hidden = false;
       }
       return;
@@ -5393,6 +5461,7 @@
     await persist(true);
     showInviteDraft(token);
     renderInviteList();
+    fanoutRetained();
     toast("Invitation prête à envoyer" + (label ? " pour " + label : "") + ".");
   }
 

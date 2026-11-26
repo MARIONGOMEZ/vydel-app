@@ -151,7 +151,11 @@
     var txt = trialStatusText();
     el.textContent = txt;
     el.hidden = !txt;
+    /* « S'abonner » : seulement pour un cabinet en essai (state.trial), juste sous le statut de l’essai */
+    var sb = document.getElementById("btn-sabonner");
+    if (sb) sb.hidden = !txt;
   }
+  var STRIPE_ABO_URL = "https://buy.stripe.com/3cI9AT3aRbWb3Trg8M97G00"; /* 14,99 € par mois */
 
   function todayISO() {
     var d = new Date();
@@ -4736,6 +4740,9 @@
     $("modal-menu").hidden = false;
   });
   $("btn-close-menu").addEventListener("click", function () { $("modal-menu").hidden = true; });
+  if ($("btn-sabonner")) $("btn-sabonner").addEventListener("click", function () {
+    window.open(STRIPE_ABO_URL, "_blank", "noopener");
+  });
 
   var lastInviteText = "";
 

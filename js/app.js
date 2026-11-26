@@ -21,8 +21,8 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.4-app";
-  var CGU_VER = "8"; /* 8 : section « Chiffrement de vos données » (1.91) — fait relire les CGU */
+  var APP_VER = "1.99.6-app";
+  var CGU_VER = "9"; /* 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
   var meta = null;
@@ -64,9 +64,9 @@
   var PUSH_URL = "https://vydel-push.vydel-push.workers.dev";
   var PUSH_VAPID = "BEzJLLGAPGF3UPhtqinAH9sECdXsqX-q7whaeHyYhZ1Mo9mWZvPvgIMtKnVLeElPkGOpHT3Xg-_EBY2BOpBD6HQ"; /* clé PUBLIQUE VAPID du serveur */
   var LS_PUSH = "tournee.push";
-  /* 2.0 (photos-cloud) : stockage aveugle des photos de documents (Cloudflare Worker + KV). Vide = comportement d’avant
-     (téléphone à téléphone uniquement). Ici : Worker de TEST, CORS limité à https://app.vydel.fr. */
-  var PH_CLOUD_URL = "https://vydel-photos-test.vydel-push.workers.dev";
+  /* 1.99.6 : stockage aveugle des photos de documents (Cloudflare Worker vydel-photos + KV, CORS https://app.vydel.fr).
+     Vide = comportement d’avant (téléphone à téléphone uniquement). */
+  var PH_CLOUD_URL = "https://vydel-photos.vydel-push.workers.dev";
   var MQTT_URLS = ["wss://broker.hivemq.com:8884/mqtt", "wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt"];
   var voiceBlobs = {};
   var recMedia = null;
@@ -7251,7 +7251,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.4-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.6-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 

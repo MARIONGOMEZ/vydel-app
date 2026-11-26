@@ -274,9 +274,14 @@
     var elDate = $("day-date");
     var elQuote = $("day-quote");
     var elHint = $("day-view-hint");
-    var iso = selectedDayISO();
+    /* 1.99.5 : sur Transmissions, Planning et Messages, la date affichée est toujours le vrai jour (non cliquable, sans flèches) ;
+       les flèches ‹ › ne changeaient que le jour de la tournée (Accueil), invisible depuis ces onglets. */
+    var otherTab = currentTab !== "tournee";
+    var iso = otherTab ? todayISO() : selectedDayISO();
     var d = parseISODate(iso);
-    if (elDate) elDate.textContent = JOUR_NAMES[d.getDay()] + " " + d.getDate() + " " + MONTHS_FR[d.getMonth()] + " " + d.getFullYear();
+    if (elDate) elDate.textContent = otherTab
+      ? JOUR_NAMES[d.getDay()] + " " + d.getDate() + " " + MONTHS_FR[d.getMonth()]
+      : JOUR_NAMES[d.getDay()] + " " + d.getDate() + " " + MONTHS_FR[d.getMonth()] + " " + d.getFullYear();
     if (elQuote) elQuote.textContent = DAY_QUOTES[dayOfYear(d) % DAY_QUOTES.length];
     var kind = viewDayKind();
     if (elHint && kind === "today") {

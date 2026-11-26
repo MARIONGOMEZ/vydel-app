@@ -344,6 +344,10 @@ html.tab-tournee .topbar-day .day-nav-btn {
 }
 html.tab-tournee .topbar-day .day-nav-btn:active { background: var(--teal-s); }
 html.tab-tournee .day-nav { display: none; }
+/* 1.99.5 : Transmissions / Planning / Messages : date du jour seule, sans flèches. */
+html:not(.tab-tournee) #day-strip .day-nav-btn { display: none; }
+html:not(.tab-tournee) #day-strip .day-nav { min-height: 32px; }
+html:not(.tab-tournee) #day-date { font-weight: 700; color: var(--ink); }
 html.tab-tournee #day-strip { padding: 2px 12px 4px; }
 html.tab-tournee .hello-quote-line {
   display: flex;

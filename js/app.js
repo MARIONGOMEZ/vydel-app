@@ -21,7 +21,7 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.6-app";
+  var APP_VER = "1.99.7-app";
   var CGU_VER = "9"; /* 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
@@ -7387,7 +7387,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.6-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.7-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 

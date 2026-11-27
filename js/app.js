@@ -45,7 +45,7 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.15-app";
+  var APP_VER = "1.99.16-app";
   var CGU_VER = "11"; /* 11 (non publiée) : chaque associé paie, y compris celui qui a créé le cabinet (abonnement du cabinet) ; essai des associés ; chaque associé paie et résilie lui-même son abonnement (1.99.13–1.99.15) */ /* 10 : « Essai gratuit et abonnement » (1.99.10) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
@@ -5760,16 +5760,29 @@
     if ($("btn-role-check")) $("btn-role-check").textContent = (g === "pay" || g === "ended") ? "Déjà payé ? Vérifier" : "Vérifier";
   }
   /* Place d’associé sur le serveur (créée une fois, partagée dans l’état chiffré du cabinet). */
-  async function seatEnsure() {
+  /* 1.99.16 : preuve de place (sk), remise par le serveur au seul téléphone qui crée la place ; gardée sur CE téléphone
+     (localStorage), jamais dans l’état partagé du cabinet. Sans elle, le serveur refuse le paiement (403).
+     Associé arrivé en 1.99.14 / 1.99.15 (place sans preuve) : au premier paiement, une nouvelle place avec preuve est prise
+     sur son téléphone, sans invitation ; l’ancienne, jamais payée, est recyclée par le serveur. */
+  var LS_SEAT_KEYS = "tournee-seat-keys";
+  function seatKeys() { try { var o = JSON.parse(localStorage.getItem(LS_SEAT_KEYS) || "{}"); return o && typeof o === "object" ? o : {}; } catch (e) { return {}; } }
+  function seatKeySet(mid, sk) { try { var o = seatKeys(); o[mid] = sk; localStorage.setItem(LS_SEAT_KEYS, JSON.stringify(o)); } catch (e) {} }
+  var seatEnsureBusy = null;
+  function seatEnsure() {
+    if (!seatEnsureBusy) seatEnsureBusy = seatEnsureRun().finally(function () { seatEnsureBusy = null; });
+    return seatEnsureBusy;
+  }
+  async function seatEnsureRun() {
     var who = localDisplayName();
     var r = roleOf(who);
     if (!r || r.role !== "assoc" || !essaiActive()) throw new Error("role");
-    if (r.mid) return r.mid;
-    var j = await essaiPost("/seat", { tid: state.trial.tid, tok: state.trial.tok });
-    if (!j.ok || !j.mid) throw new Error("seat");
+    if (r.mid && seatKeys()[r.mid]) return r.mid;
+    if (r.mid && (Number(r.paidUntil) || 0) > Date.now()) return r.mid; /* déjà payée : rien à payer, on la garde */
+    var j = await essaiPost("/seat", { tid: state.trial.tid, tok: state.trial.tok, old: r.mid || "" });
+    if (!j.ok || !j.mid || !j.sk) throw new Error("seat");
+    seatKeySet(j.mid, j.sk);
     r = roleOf(who);
-    if (r.mid) return r.mid;
-    r.mid = j.mid; r.t = Date.now();
+    r.mid = j.mid; r.paidUntil = 0; r.sub = ""; r.t = Date.now(); r.su = Date.now();
     persist(true);
     return r.mid;
   }
@@ -5797,7 +5810,12 @@
     if (btn) btn.disabled = true;
     try {
       var mid = await seatEnsure();
-      var j = await essaiPost("/seat/checkout", { tid: state.trial.tid, tok: state.trial.tok, mid: mid, ret: location.origin + location.pathname });
+      var j = await essaiPost("/seat/checkout", { tid: state.trial.tid, tok: state.trial.tok, mid: mid, sk: seatKeys()[mid] || "", ret: location.origin + location.pathname });
+      if (j && j.why === "seat-key") {
+        var mk = "Paiement refusé : l’abonnement d’un associé se paie uniquement depuis le téléphone de cet associé.";
+        if (err && !$("modal-role").hidden) { err.hidden = false; err.textContent = mk; } else toast(mk);
+        return;
+      }
       if (j && j.why === "paid") {
         await seatSync().catch(function () {});
         var m = "Votre abonnement d’associé est déjà payé : pas de second paiement.";
@@ -8552,7 +8570,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.15-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.16-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 

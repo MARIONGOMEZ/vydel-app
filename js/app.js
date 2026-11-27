@@ -5757,7 +5757,7 @@
     var code = extractTrialCode(raw);
     if (!code) return { ok: false, err: "Code non reconnu. Collez le message ou le lien reçu." };
     if (code.indexOf("VYD-") === 0) {
-      return { ok: false, err: "Ancien code d’essai : il n’est plus utilisé. Touchez « Proposer l’essai 14 jours » sur l’accueil." };
+      return { ok: false, err: "Ancien code d’essai : il n’est plus utilisé. Touchez « Démarrer l’essai de 14 jours » sur l’accueil." };
       var m = code.match(/^VYD-([A-Z0-9]{8})-(\d{10,})-([A-Za-z0-9_-]{10})$/);
       if (!m) return { ok: false, err: TRIAL_BAD };
       var id = m[1], exp = Number(m[2]);
@@ -6137,7 +6137,7 @@
     return "Salut" + (to ? " " + to : "") + " ! Je te propose d’essayer Vydel, une appli pour les tournées IDEL. Idéale aussi pour les remplaçants.\n\n"
       + "Ce n’est pas un logiciel de facturation ni un dossier médical : c’est la checklist du jour, les passages et le relais entre collègues.\n\n"
       + "1) Ouvre ce lien : " + VYDEL_APP_URL + "\n"
-      + "2) Touche « Proposer l’essai 14 jours » et crée ton propre cabinet (PIN de 6 chiffres).\n\n"
+      + "2) Touche « Démarrer l’essai de 14 jours » et crée ton propre cabinet (PIN de 6 chiffres).\n\n"
       + "Tu me dis ce qui coince ou ce qui manque. Merci !\n\n"
       + "© 2026 Orva Labs. Tous droits réservés.";
   }

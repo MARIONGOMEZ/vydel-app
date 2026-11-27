@@ -433,7 +433,7 @@
             <div id="ordo-states"></div>
             <h3 class="fiche-h ordo-ph-h">Photos d’ordonnance</h3>
             <p class="ph-lock" id="ordo-ph-lock">🔒 Chiffrées · partagées avec le cabinet</p>
-            <p class="hint" id="ordo-ph-hint">Visibles sur tous les téléphones du cabinet. Chiffrées sur le téléphone avec la clé du cabinet ; une copie chiffrée est gardée en ligne, illisible pour le serveur, et les autres téléphones la reçoivent même si celui qui l’a prise est éteint. Effacées partout, en ligne compris, à la fin de l’ordonnance (date de fin indiquée sur la fiche), ou après 90 jours s’il n’y a pas de date. 6 photos maximum en tout, avec l’onglet Photos.</p>
+            <p class="hint" id="ordo-ph-hint">Visibles sur tous les téléphones du cabinet. Chiffrées sur le téléphone avec la clé du cabinet, puis gardées chiffrées sur un serveur jusqu’à la fin de l’ordonnance : tout le cabinet les reçoit, même si le téléphone qui les a prises est éteint. Effacées partout, serveur compris, à la fin de l’ordonnance (date de fin indiquée sur la fiche), ou après 90 jours s’il n’y a pas de date, et dès qu’on les supprime. 6 photos maximum en tout, avec l’onglet Photos.</p>
             <div id="ordo-ph-grid" class="ph-grid"></div>
             <p id="ordo-ph-msg" class="hint" hidden></p>
             <button type="button" class="btn btn-ghost" id="btn-ordo-ph-add">Ajouter une photo d’ordonnance</button>
@@ -456,7 +456,7 @@
           <section class="fiche-pane" role="tabpanel" id="fp-photos" aria-labelledby="ft-photos" tabindex="0" hidden>
             <h3 class="fiche-h">Photos</h3>
             <p class="ph-lock" id="ph-lock">🔒 Chiffrées · partagées avec le cabinet</p>
-            <p class="hint" id="ph-hint">Documents seulement (accès / clé, ordonnance, carte vitale), jamais le patient. Visibles sur tous les téléphones du cabinet, chiffrées sur le téléphone, avec une copie chiffrée gardée en ligne que le serveur ne peut pas lire. Ordonnance : effacée partout à la fin de l’ordonnance (90 jours sans date) ; accès / clé et carte vitale : après 90 jours (ou à la fin de l’ordonnance si plus tôt). 6 maximum.</p>
+            <p class="hint" id="ph-hint">Documents seulement (accès / clé, ordonnance, carte vitale), jamais le patient. Visibles sur tous les téléphones du cabinet. Chiffrées sur le téléphone avec la clé du cabinet, puis gardées chiffrées sur un serveur jusqu’à leur date d’effacement. Ordonnance : effacée partout à la fin de l’ordonnance (90 jours sans date) ; accès / clé et carte vitale : après 90 jours (ou à la fin de l’ordonnance si plus tôt). 6 maximum.</p>
             <div id="ph-grid" class="ph-grid"></div>
             <p id="ph-msg" class="hint" hidden></p>
             <button type="button" class="btn btn-primary" id="btn-ph-add">Ajouter une photo</button>

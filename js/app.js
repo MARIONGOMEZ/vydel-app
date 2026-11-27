@@ -45,7 +45,7 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.18-app";
+  var APP_VER = "1.99.19-app";
   var CGU_VER = "11"; /* 11 (1.99.17) : chaque associé paie, y compris celui qui a créé le cabinet (abonnement du cabinet) ; essai des associés ; chaque associé paie et résilie lui-même son abonnement (1.99.13–1.99.15) */ /* 10 : « Essai gratuit et abonnement » (1.99.10) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
@@ -8810,7 +8810,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.18-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.19-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 

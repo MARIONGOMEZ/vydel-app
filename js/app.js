@@ -45,7 +45,7 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.10-app";
+  var APP_VER = "1.99.11-app";
   var CGU_VER = "10"; /* 10 : « Essai gratuit et abonnement » (1.99.10) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
@@ -5427,7 +5427,7 @@
     if (j.httpStatus === 409) return { ok: false, err: "Ce téléphone a déjà utilisé son essai gratuit de 14 jours : on ne peut pas en démarrer un deuxième en créant un autre cabinet. Ouvrez votre cabinet pour souscrire, ou rejoignez un cabinet avec une invitation." };
     if (j.httpStatus === 429) return { ok: false, err: "Trop d’essais démarrés depuis ce réseau aujourd’hui. Réessayez demain, ou depuis un autre réseau." };
     if (j.httpStatus === 410) return { ok: false, err: "Cette invitation a été annulée. Demandez un nouveau lien à la personne qui vous l’a envoyée." };
-    return { ok: false, err: "Impossible de démarrer l’essai pour l’instant. Réessayez dans un instant." };
+    return { ok: false, err: "Impossible de démarrer l’essai pour l’instant. Réessayez dans un instant. Si le problème continue : contact@vydel.fr." };
   }
   function essaiActive() {
     var t = state && state.trial;
@@ -5533,7 +5533,7 @@
       try { localStorage.setItem(SS_ABO_WAIT, String(Date.now())); } catch (e1) {}
       location.assign(j.url);
     } catch (e2) {
-      if (err) { err.hidden = false; err.textContent = "Paiement indisponible pour l’instant. Vérifiez la connexion et réessayez."; }
+      if (err) { err.hidden = false; err.textContent = "Paiement indisponible pour l’instant. Vérifiez la connexion et réessayez. Si le problème continue : contact@vydel.fr."; }
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -8212,7 +8212,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.10-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.11-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 

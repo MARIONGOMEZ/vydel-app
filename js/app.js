@@ -8450,7 +8450,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.12-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.13-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 

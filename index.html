@@ -9,15 +9,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Vydel">
   <meta name="description" content="Checklist Vydel pour IDEL. Pas un dossier médical.">
-  <meta name="tournee-version" content="1.99.13-app">
+  <meta name="tournee-version" content="1.99.14-app">
   <!-- Vydel v1 -->
   <title>Vydel</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="manifest" href="./manifest.json">
-  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=1.99.13-app">
-  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=1.99.13-app">
-  <link rel="stylesheet" href="./css/leaflet.css?v=1.99.13-app">
-  <link rel="stylesheet" href="./css/app.css?v=1.99.13-app">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=1.99.14-app">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=1.99.14-app">
+  <link rel="stylesheet" href="./css/leaflet.css?v=1.99.14-app">
+  <link rel="stylesheet" href="./css/app.css?v=1.99.14-app">
 </head>
 <body>
   <div id="app">
@@ -25,7 +25,7 @@
     <!-- CGU -->
     <section id="screen-cgu" class="screen" hidden>
       <div class="form-screen cgu-screen">
-        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.13-app" alt="">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.14-app" alt="">
         <h1>Conditions d’utilisation</h1>
         <div class="cgu-body">
           <p>Vydel est une <strong>checklist de passages</strong> pour IDEL. Ce n’est <strong>pas un dossier médical</strong> : pas de diagnostic, pas de pathologie, pas de notes cliniques. Uniquement le passage du jour.</p>
@@ -66,9 +66,9 @@
             <li id="cgu-essai-14"><strong>Essai gratuit de 14 jours.</strong> Il démarre à la création du cabinet. Un seul essai par téléphone. Le lien d’essai (app.vydel.fr/essai) peut être partagé librement : chaque personne qui l’ouvre démarre son propre essai, dans son propre cabinet.</li>
             <li id="cgu-essai-serveur"><strong>Un serveur pour les dates de l’essai et l’abonnement.</strong> Pour démarrer l’essai, l’appli contacte un serveur d’Orva Labs (Cloudflare) qui note la date de début et de fin de l’essai et l’état de l’abonnement. Il ne reçoit ni nom, ni prénom, ni patient, ni contenu du cabinet : seulement un identifiant d’essai tiré au hasard, une empreinte non réversible du téléphone et des identifiants techniques illisibles, pour les notifications et pour les photos gardées en ligne. Pour limiter les abus, seule une empreinte salée de l’adresse IP est gardée, un jour ; l’adresse elle-même n’est pas enregistrée.</li>
             <li id="cgu-essai-rappel"><strong>Rappel deux jours avant la fin.</strong> Un bandeau dans l’appli et, si les notifications sont activées sur le téléphone, une notification.</li>
-            <li id="cgu-essai-blocage"><strong>À la fin de l’essai sans abonnement, l’application est bloquée</strong> pour tous les membres du cabinet, sauf pour un associé dont l’abonnement est en cours. Pendant 30 jours, l’administratrice ou l’administrateur du cabinet peut encore exporter les données avec le bouton « Exporter mes données ». Passé ce délai, l’export n’est plus proposé et les photos de documents gardées en ligne sont effacées du serveur de stockage. Les données restent chiffrées sur les téléphones tant que l’appli n’y est pas supprimée.</li>
-            <li id="cgu-essai-abo"><strong>Abonnement du cabinet : 14,99 € par mois.</strong> Il est payé pour le cabinet, à partir de la fin de l’essai.</li>
-            <li id="cgu-essai-associe"><strong>Abonnement de chaque associé : 14,99 € par mois, en plus.</strong> Chaque associé qui rejoint le cabinet a son propre abonnement, séparé de celui du cabinet, payé chaque mois tant qu’il n’est pas résilié. L’accès de l’associé s’ouvre dès que Stripe confirme son paiement. Résilier l’abonnement d’un associé ne coupe pas le cabinet ; résilier celui du cabinet ne coupe pas un associé abonné.</li>
+            <li id="cgu-essai-blocage"><strong>À la fin de l’essai sans abonnement, l’application est bloquée</strong> pour tous les membres du cabinet, sauf pour un autre associé dont l’abonnement est en cours. Pendant 30 jours, l’administratrice ou l’administrateur du cabinet peut encore exporter les données avec le bouton « Exporter mes données ». Passé ce délai, l’export n’est plus proposé et les photos de documents gardées en ligne sont effacées du serveur de stockage. Les données restent chiffrées sur les téléphones tant que l’appli n’y est pas supprimée.</li>
+            <li id="cgu-essai-abo"><strong>Chaque associé paie 14,99 € par mois, y compris celui qui a créé le cabinet.</strong> L’abonnement de l’associé qui a créé le cabinet (son administrateur) est celui du cabinet ; il est payé à partir de la fin de l’essai. Exemple : un cabinet de 3 associés paie 3 × 14,99 € = 44,97 € par mois.</li>
+            <li id="cgu-essai-associe"><strong>Abonnement de chaque autre associé : 14,99 € par mois.</strong> Chaque associé qui rejoint le cabinet a son propre abonnement, séparé de celui du cabinet, payé chaque mois tant qu’il n’est pas résilié. Pendant l’essai de 14 jours du cabinet, il utilise aussi l’application gratuitement ; son abonnement lui est demandé à la fin de cet essai, avec un bandeau de rappel dans l’appli deux jours avant, puis son accès est bloqué tant qu’il n’est pas payé. Un associé qui arrive après la fin de l’essai du cabinet paie dès son arrivée. S’il paie avant la fin de l’essai, son abonnement commence le jour du paiement. L’administrateur peut payer pour l’associé, et l’associé peut payer aussi, de son côté, indépendamment, avec le même lien de paiement ; l’appli ne propose pas de payer un abonnement d’associé déjà payé. L’abonnement se résilie par la personne qui l’a payé, avec l’adresse e-mail utilisée à ce paiement. L’accès de l’associé s’ouvre dès que Stripe confirme son paiement. Résilier l’abonnement d’un associé ne coupe pas le cabinet ; résilier celui du cabinet ne coupe pas un autre associé abonné.</li>
             <li id="cgu-essai-remplacant"><strong>Remplaçant : gratuit, 2 au plus par cabinet.</strong> En rejoignant le cabinet, chacun indique s’il est associé ou remplaçant. Un remplaçant n’a accès au cabinet qu’après validation par l’administrateur du cabinet, qui peut aussi le passer associé : l’abonnement d’associé lui est alors demandé. Se déclarer remplaçant quand on exerce comme associé du cabinet est contraire à ces conditions.</li>
             <li id="cgu-essai-paiement"><strong>Paiement et résiliation.</strong> Le paiement se fait par carte bancaire, sur la page de paiement de Stripe ; Orva Labs ne reçoit pas les numéros de carte. L’application est débloquée dès que Stripe confirme le paiement. Résiliation en ligne, sans écrire au SAV : sur vydel.fr/resilier.html, vous saisissez l’adresse e-mail utilisée au paiement, vous recevez un lien de connexion à l’espace client de Stripe, puis vous choisissez « Annuler l’abonnement ». La résiliation prend effet à la fin de la période déjà payée. Quand l’abonnement s’arrête (résiliation ou paiement refusé), l’application est de nouveau bloquée, avec 30 jours pour exporter les données.</li>
           </ul>
@@ -85,7 +85,7 @@
          comme pour « Démarrer l’essai de 14 jours » sur l’accueil -->
     <section id="screen-essai" class="screen" hidden>
       <div class="splash">
-        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.13-app" alt="">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.14-app" alt="">
         <h1>Essai gratuit de 14 jours</h1>
         <p class="lede">Voici la nouvelle application Vydel : la checklist du jour pour IDEL. Essayez-la pendant 14 jours ; si elle vous plaît, vous pourrez souscrire à l’abonnement (14,99 € par mois).</p>
         <p class="hint">Vous allez créer votre propre cabinet, protégé par un PIN de 6 chiffres.</p>
@@ -98,7 +98,7 @@
     <!-- Accueil -->
     <section id="screen-welcome" class="screen" hidden>
       <div class="splash">
-        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.13-app" alt="">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.14-app" alt="">
         <h1 id="welcome-title">Vydel</h1>
         <p class="lede">Checklist du jour pour IDEL. Pas un dossier médical — uniquement le passage.</p>
         <button type="button" class="btn btn-primary" id="btn-join">Rejoindre le cabinet</button>
@@ -112,7 +112,7 @@
     <!-- Vos cabinets (plusieurs cabinets sur ce téléphone, avant le PIN) -->
     <section id="screen-cabs" class="screen" hidden>
       <div class="choix-wrap">
-        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.13-app" alt="">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.14-app" alt="">
         <h1>Vos cabinets</h1>
         <p class="lede">Touchez le cabinet à ouvrir.</p>
         <div class="choix-list" id="cabs-list"></div>
@@ -124,7 +124,7 @@
     <!-- Code PIN (création / confirmation / déverrouillage) -->
     <section id="screen-pin" class="screen" hidden>
       <div class="pin-wrap">
-        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.13-app" alt="">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.14-app" alt="">
         <h1 id="pin-cab-name">Vydel</h1>
         <p id="pin-title" class="lede">Code PIN</p>
         <p id="pin-hint" class="hint">4 à 6 chiffres, partagé entre associées.</p>
@@ -189,7 +189,7 @@
       <div class="app-head">
         <header class="topbar">
           <button type="button" class="icon-btn" id="btn-menu" aria-label="Menu">
-            <img class="topbar-logo" src="./icons/icon-192.png?v=1.99.13-app" alt="">
+            <img class="topbar-logo" src="./icons/icon-192.png?v=1.99.14-app" alt="">
           </button>
           <div class="topbar-title">
             <div class="topbar-brand">
@@ -611,7 +611,7 @@
   <!-- Fin d’essai (1.99.8) : appli bloquée, export des données 30 jours, abonnement -->
   <div id="modal-essai-fin" class="modal modal-center modal-essai" hidden>
     <div class="sheet" role="dialog" aria-labelledby="essai-fin-title">
-      <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.13-app" alt="">
+      <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.14-app" alt="">
       <h2 id="essai-fin-title">Votre essai de 14 jours est terminé</h2>
       <p id="essai-fin-text" class="hint"></p>
       <button type="button" class="btn btn-primary" id="btn-essai-fin-sub">Souscrire — 14,99 € par mois</button>
@@ -623,10 +623,11 @@
   </div>
   <div id="modal-abo" class="modal modal-center modal-abo" hidden>
     <div class="sheet" role="dialog" aria-labelledby="abo-title">
-      <h2 id="abo-title">Abonnement Vydel</h2>
+      <h2 id="abo-title">Abonnement du cabinet</h2>
       <p class="abo-price"><strong>14,99 €</strong> par mois</p>
       <ul class="cgu-list abo-list">
         <li>Tout Vydel, pour votre cabinet, dès le paiement.</li>
+        <li>C’est votre abonnement d’associé(e) qui a créé le cabinet. Chaque autre associé a le sien, 14,99 € par mois : vous pouvez payer pour l’associé, et l’associé peut payer aussi, de son côté, indépendamment.</li>
         <li>Paiement par carte bancaire, sur la page sécurisée de Stripe.</li>
         <li>Vos données restent chiffrées, comme pendant l’essai.</li>
       </ul>
@@ -697,7 +698,7 @@
   <!-- 1.99.12 : arrivée dans un cabinet — remplaçant en attente de validation, associé en attente de paiement -->
   <div id="modal-role" class="modal modal-center modal-essai" hidden>
     <div class="sheet" role="dialog" aria-labelledby="role-title">
-      <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.13-app" alt="">
+      <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.14-app" alt="">
       <h2 id="role-title">En attente de validation</h2>
       <p id="role-text" class="hint"></p>
       <p id="role-error" class="error" hidden></p>
@@ -1068,10 +1069,10 @@
 
 <div id="toast" class="toast" hidden role="status"></div>
 
-  <script src="./js/leaflet.js?v=1.99.13-app"></script>
-  <script src="./js/mqtt.min.js?v=1.99.13-app"></script>
-  <script src="./js/mqtt-lite.js?v=1.99.13-app"></script>
-  <script src="./js/import.js?v=1.99.13-app"></script>
-  <script src="./js/app.js?v=1.99.13-app" defer></script>
+  <script src="./js/leaflet.js?v=1.99.14-app"></script>
+  <script src="./js/mqtt.min.js?v=1.99.14-app"></script>
+  <script src="./js/mqtt-lite.js?v=1.99.14-app"></script>
+  <script src="./js/import.js?v=1.99.14-app"></script>
+  <script src="./js/app.js?v=1.99.14-app" defer></script>
 </body>
 </html>

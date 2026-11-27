@@ -9667,8 +9667,8 @@
     var dev = isDevPhone();
     if (hint) {
       hint.textContent = dev
-        ? "Les retours du cabinet. Arrivent par e-mail, non chiffré."
-        : "Une idée, un truc à changer, un bug. Ça part au développeur par e-mail (non chiffré) : n’écrivez aucun nom ni info de patient.";
+        ? "Les retours du cabinet."
+        : "Une idée, un truc à changer, un bug.";
     }
     if (!dev) {
       box.hidden = true;

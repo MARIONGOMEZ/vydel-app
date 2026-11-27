@@ -1419,6 +1419,25 @@ textarea#tx-today:focus {
   overflow-y: auto;
   margin: 0 0 12px;
 }
+#feedback-hint { margin-bottom: 8px; }
+.feedback-alert {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: #fff4d6;
+  color: #5a4300;
+  border: 1px solid #e8c56b;
+  border-radius: 12px;
+}
+.feedback-alert-title {
+  margin: 0 0 4px;
+  font-weight: 750;
+  font-size: 14.5px;
+}
+.feedback-alert-text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
 .fb-item {
   background: var(--paper);
   border-radius: 16px;

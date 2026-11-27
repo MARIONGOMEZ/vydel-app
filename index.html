@@ -970,10 +970,14 @@
   <div id="modal-feedback" class="modal" hidden>
     <div class="sheet" role="dialog" aria-labelledby="feedback-title">
       <h2 id="feedback-title">Question SAV</h2>
-      <p class="hint" id="feedback-hint">Une idée, un truc à changer, un bug. Ça part au développeur par e-mail (non chiffré) : n’écrivez aucun nom ni info de patient.</p>
+      <p class="hint" id="feedback-hint">Une idée, un truc à changer, un bug.</p>
+      <div class="feedback-alert" id="feedback-alert" role="note">
+        <p class="feedback-alert-title">⚠️ Aucune information patient</p>
+        <p class="feedback-alert-text">Ce message part par e-mail, non chiffré. N’y mettez jamais de nom, de date de naissance, de numéro de sécu, d’adresse ni de soin d’un patient.</p>
+      </div>
       <div id="feedback-list" class="feedback-list"></div>
       <label for="f-feedback">Votre idée</label>
-      <textarea id="f-feedback" class="tx-area" rows="4" maxlength="400" placeholder="Moi je voudrais… / ce serait bien d’enlever…"></textarea>
+      <textarea id="f-feedback" class="tx-area" rows="4" maxlength="400" placeholder="Pas de nom, date de naissance, n° de sécu, adresse ni soin d’un patient."></textarea>
       <div class="row-btns">
         <button type="button" class="btn btn-primary" id="btn-send-feedback">Envoyer</button>
         <button type="button" class="btn btn-ghost" id="btn-close-feedback">Fermer</button>

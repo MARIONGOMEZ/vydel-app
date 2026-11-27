@@ -45,8 +45,8 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.16-app";
-  var CGU_VER = "11"; /* 11 (non publiée) : chaque associé paie, y compris celui qui a créé le cabinet (abonnement du cabinet) ; essai des associés ; chaque associé paie et résilie lui-même son abonnement (1.99.13–1.99.15) */ /* 10 : « Essai gratuit et abonnement » (1.99.10) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
+  var APP_VER = "1.99.17-app";
+  var CGU_VER = "11"; /* 11 (1.99.17) : chaque associé paie, y compris celui qui a créé le cabinet (abonnement du cabinet) ; essai des associés ; chaque associé paie et résilie lui-même son abonnement (1.99.13–1.99.15) */ /* 10 : « Essai gratuit et abonnement » (1.99.10) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
   var meta = null;
@@ -93,7 +93,18 @@
   var PH_CLOUD_URL = "https://vydel-photos.vydel-push.workers.dev";
   var LS_PUSH_ASK_RE = "tournee.pushAskRe"; /* « 1 » : choix « allow » mais abonnement absent → fenêtre déjà réaffichée une fois */
   var LS_PUSH_ASK = "tournee.pushAsk"; /* « allow » | « deny » : choix fait dans la fenêtre d’ouverture, plus jamais redemandé */
-  var MQTT_URLS = ["wss://broker.hivemq.com:8884/mqtt", "wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt"];
+  var MQTT_URLS = ["vydel:wss://vydel-relais.vydel-push.workers.dev", "wss://broker.hivemq.com:8884/mqtt", "wss://broker.emqx.io:8084/mqtt", "wss://test.mosquitto.org:8081/mqtt"];
+  /* 1.99.13 : relais Vydel (Cloudflare Worker vydel-relais + Durable Objects), réservé aux téléphones du cabinet.
+     Entrée « vydel:… » de la liste : retirée de MQTT_URLS (relais publics, gardés en pont pendant la transition).
+     Sans entrée « vydel:… » (ancienne config) : comportement 1.99.12 (relais publics seuls, invitations « vj= »). */
+  var RELAIS_URL = "";
+  MQTT_URLS = MQTT_URLS.filter(function (u) {
+    if (String(u).indexOf("vydel:") === 0) { RELAIS_URL = String(u).slice(6).replace(/\/+$/, ""); return false; }
+    return true;
+  });
+  var RELAIS_HTTP = RELAIS_URL ? RELAIS_URL.replace(/^ws/, "http") : "";
+  /* 1.99.13 : retours (Question SAV). Vide = FormSubmit, comme avant (l’envoi d’e-mails par notre Worker n’est pas encore branché). */
+  var RETOUR_URL = "";
   var voiceBlobs = {};
   var recMedia = null;
   var recStream = null;
@@ -1066,6 +1077,9 @@
     if (window.mqtt && mqtt.connect) {
       var uidx = 0;
       var client = null;
+      /* 1.99.13 : en plus du relais public (pont pour les téléphones pas encore à jour), le relais Vydel du cabinet. */
+      var rc = null;
+      function anyLive() { return !!((client && client.connected) || (rc && rc.connected)); }
       function attach(c) {
         c.on("connect", function () {
           mqttLive = true;
@@ -1092,15 +1106,16 @@
         c.on("message", function (t, payload) { route(t, payload, eatFirst); });
         c.on("error", function () {});
         c.on("close", function () {
-          mqttLive = false;
+          mqttLive = anyLive();
           refreshSyncUi();
           if (!meta || meta.shareOk) return;
         });
-        c.on("offline", function () { mqttLive = false; refreshSyncUi(); });
-        c.on("reconnect", function () { mqttLive = false; refreshSyncUi(); });
+        c.on("offline", function () { mqttLive = anyLive(); refreshSyncUi(); });
+        c.on("reconnect", function () { mqttLive = anyLive(); refreshSyncUi(); });
       }
       function go() {
         if (uidx >= MQTT_URLS.length) {
+          if (rc && rc.connected) return;
           markShare(false, "mqtt");
           return;
         }
@@ -1122,33 +1137,39 @@
         }, 9000);
         client.on("connect", function () { clearTimeout(timer); });
       }
-      go();
+      if (MQTT_URLS.length) go();
+      if (RELAIS_URL && secu && secu.topic === id && secu.ckRaw) {
+        rc = relaisConnect(id, secu.ckRaw);
+        attach(rc);
+      } else if (!MQTT_URLS.length) markShare(false, "mqtt");
+      /* Envoi sur chaque connexion ouverte ; accusé de réception dès qu’une connexion l’a pris. */
+      var live = function () { return [client, rc].filter(function (k) { return k && k.connected; }); };
+      var pubAll = function (full, text, retain, onAck) {
+        var mine = full === topic || full.indexOf(topic + "/") === 0;
+        var ks = live().filter(function (k) { return mine || k !== rc; });
+        if (!ks.length) return false;
+        var fired = false, errs = 0, sent = false;
+        var one = function (err) {
+          if (fired) return;
+          if (!err) { fired = true; if (onAck) onAck(null); return; }
+          if (++errs >= ks.length) { fired = true; if (onAck) onAck(err); }
+        };
+        ks.forEach(function (k) {
+          try { k.publish(full, text, { retain: retain !== false, qos: 1 }, one); sent = true; } catch (eP) { one(eP); }
+        });
+        return sent;
+      };
       mqttHandle = {
         acks: true,
-        publish: function (text, retain, onAck) {
-          if (!client || !client.connected) return false;
-          try {
-            client.publish(topic, text, { retain: retain !== false, qos: 1 }, function (err) { if (onAck) onAck(err || null); });
-            return true;
-          } catch (eP) { return false; }
-        },
-        publishTo: function (sub, text, retain) {
-          if (!client || !client.connected) return false;
-          try {
-            client.publish(topic + "/" + sub, text, { retain: retain !== false, qos: 1 });
-            return true;
-          } catch (eP) { return false; }
-        },
-        publishRaw: function (full, text, retain) {
-          if (!client || !client.connected) return false;
-          try {
-            client.publish(full, text, { retain: retain !== false, qos: 1 });
-            return true;
-          } catch (eP) { return false; }
-        },
+        publish: function (text, retain, onAck) { return pubAll(topic, text, retain, onAck); },
+        publishTo: function (sub, text, retain) { return pubAll(topic + "/" + sub, text, retain, null); },
+        /* Sujets hors du cabinet (ancien sujet « pont » du PIN) : le relais Vydel les refuse, ils restent sur le relais public. */
+        publishRaw: function (full, text, retain) { return pubAll(full, text, retain, null); },
         close: function () {
           try { if (client) client.end(true); } catch (eX) {}
+          try { if (rc) rc.end(true); } catch (eY) {}
           client = null;
+          rc = null;
         }
       };
       return;
@@ -1192,6 +1213,103 @@
     return s;
   }
 
+
+  /* —— Relais Vydel (1.99.13) ——
+     Une salle par cabinet, ouverte avec un jeton dérivé de la clé du cabinet (SHA-256) : seuls les téléphones qui ont
+     la clé peuvent lire, écrire ou effacer. Le relais ne reçoit que l’état déjà chiffré. Interface d’un client mqtt.js
+     (on / subscribe / publish / end / connected), limitée aux sujets « tournee/<sujet>… » du cabinet. */
+  var relaisKeys = {};
+  function relaisRemember(topic, ckRaw) { if (topic && ckRaw) relaisKeys[String(topic)] = ckRaw; }
+  function relaisKeyFor(topic) {
+    if (secu && secu.topic === topic && secu.ckRaw) return secu.ckRaw;
+    return relaisKeys[String(topic)] || null;
+  }
+  async function relaisToken(topic, ckRaw) {
+    var h = await crypto.subtle.digest("SHA-256", concat(new TextEncoder().encode("vydel-relais-v1|" + topic + "|"), ckRaw));
+    var u = new Uint8Array(h), t = "";
+    for (var i = 0; i < u.length; i++) t += ("0" + u[i].toString(16)).slice(-2);
+    return t;
+  }
+  function relaisConnect(topicId, ckRaw, opts) {
+    opts = opts || {};
+    var base = "tournee/" + topicId;
+    var ev = {}, ws = null, closed = false, seq = 0, pend = {}, retry = 0, timer = null, ping = null;
+    function emit(n, a, b) { (ev[n] || []).slice().forEach(function (f) { try { f(a, b); } catch (e) {} }); }
+    function failPending() { Object.keys(pend).forEach(function (k) { var f = pend[k]; delete pend[k]; try { f(new Error("relais")); } catch (e) {} }); }
+    var c = {
+      relais: true,
+      connected: false,
+      on: function (n, f) { (ev[n] = ev[n] || []).push(f); return c; },
+      subscribe: function (t, o, cb) { if (typeof o === "function") cb = o; if (cb) setTimeout(function () { cb(null); }, 0); return c; },
+      publish: function (t, m, o, cb) {
+        if (typeof o === "function") { cb = o; o = {}; }
+        o = o || {};
+        t = String(t);
+        var sub;
+        if (t === base) sub = "";
+        else if (t.indexOf(base + "/") === 0) sub = t.slice(base.length + 1);
+        else { if (cb) cb(new Error("sujet")); return c; }
+        if (!c.connected || !ws) { if (cb) cb(new Error("hors ligne")); return c; }
+        var i = ++seq;
+        if (cb) pend[i] = cb;
+        try { ws.send(JSON.stringify({ t: "p", s: sub, m: payloadToText(m) || String(m == null ? "" : m), r: o.retain === false ? 0 : 1, i: i })); } catch (eS) { delete pend[i]; if (cb) cb(eS); }
+        return c;
+      },
+      end: function () {
+        closed = true;
+        clearTimeout(timer);
+        clearInterval(ping);
+        c.connected = false;
+        failPending();
+        try { if (ws) ws.close(1000); } catch (e) {}
+        ws = null;
+      }
+    };
+    function later() {
+      if (closed || opts.once) { if (opts.once && !closed) emit("close"); return; }
+      clearTimeout(timer);
+      timer = setTimeout(open, Math.min(30000, 2000 * Math.pow(2, Math.min(retry++, 4))));
+    }
+    async function open() {
+      if (closed) return;
+      var tok;
+      try { tok = await relaisToken(topicId, ckRaw); } catch (eT) { return; }
+      if (closed) return;
+      var me;
+      try { me = new WebSocket(RELAIS_URL + "/ws", ["vydel-relais-v1", "t" + tok]); } catch (eW) { later(); return; }
+      ws = me;
+      me.onopen = function () {
+        if (me !== ws) return;
+        retry = 0;
+        c.connected = true;
+        emit("connect");
+        clearInterval(ping);
+        ping = setInterval(function () { try { if (me.readyState === 1) me.send("ping"); } catch (e) {} }, 25000);
+      };
+      me.onmessage = function (e) {
+        if (me !== ws || e.data === "pong") return;
+        var d;
+        try { d = JSON.parse(e.data); } catch (eJ) { return; }
+        if (d.t === "m") emit("message", d.s ? base + "/" + d.s : base, String(d.m == null ? "" : d.m));
+        else if (d.t === "a" && d.i != null && pend[d.i]) { var f = pend[d.i]; delete pend[d.i]; f(d.e ? new Error(d.e) : null); }
+        else if (d.t === "r") emit("ready");
+      };
+      me.onclose = function () {
+        if (me !== ws) return;
+        var was = c.connected;
+        c.connected = false;
+        clearInterval(ping);
+        ws = null;
+        failPending();
+        if (was) emit("close"); else emit("error", new Error("relais"));
+        emit("offline");
+        later();
+      };
+      me.onerror = function () {};
+    }
+    open();
+    return c;
+  }
 
   /* —— Sécurité v2 (1.91) : clé cabinet aléatoire + sujet aléatoire ——
      Le PIN ne sert plus qu’à déverrouiller CE téléphone (il emballe la clé localement).
@@ -1943,8 +2061,82 @@
     return VYDEL_APP_URL;
   }
 
+  /* —— Invitations à usage unique côté serveur (1.99.13) ——
+     Le lien « #vi=<id>.<a> » ne contient ni le sujet ni la clé : seulement un identifiant et un sel aléatoires.
+     La clé du cabinet (avec le sujet et le code) est chiffrée avec une clé tirée du PIN ET du sel « a » du lien, et
+     déposée sur le relais Vydel avec un vérificateur du PIN. Le relais ne la rend qu’une fois, au bon PIN, 5 essais
+     au plus, 48 h au plus. Un lien volé ne permet donc plus d’essayer des PIN hors ligne ; le relais seul ne peut
+     rien ouvrir (il n’a pas « a »). Les liens « #vj= » déjà envoyés restent acceptés (usage unique dans le cabinet). */
+  var INV_ITERS = 600000;
+  var INV_TTL_MS = 48 * 3600000;
+  var LS_INV_CLAIM = "tournee.invClaim";
+  function hexOf(bytes) {
+    var u = new Uint8Array(bytes), t = "";
+    for (var i = 0; i < u.length; i++) t += ("0" + u[i].toString(16)).slice(-2);
+    return t;
+  }
+  async function invParts(pin, a) {
+    var te = new TextEncoder();
+    var mat = await crypto.subtle.importKey("raw", te.encode(String(pin)), "PBKDF2", false, ["deriveBits"]);
+    var pk = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: concat(te.encode("vydel-inv-v1|"), a), iterations: INV_ITERS, hash: "SHA-256" }, mat, 256));
+    var v = hexOf(await crypto.subtle.digest("SHA-256", concat(te.encode("vydel-inv-v1|v|"), pk)));
+    var kraw = new Uint8Array(await crypto.subtle.digest("SHA-256", concat(te.encode("vydel-inv-v1|k|"), pk)));
+    return { v: v, k: await importAes(kraw) };
+  }
+  function invClaimClear() { try { localStorage.removeItem(LS_INV_CLAIM); } catch (e) {} }
+  function invPost(path, body) {
+    return fetch(RELAIS_HTTP + path, {
+      method: "POST", mode: "cors", credentials: "omit", cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  }
+  /* Ouvre une invitation (« vj= » ancienne ou « vi= » nouvelle) avec le PIN. Rend { ckRaw, inv: { topic, code } }. */
+  async function inviteOpen(inv, pin) {
+    var ep;
+    if (!inv.vi) {
+      var ck0;
+      try { ck0 = await unwrapWithPin(inv.w, pin); } catch (eW) { ep = new Error("pin"); ep.code = "pin"; throw ep; }
+      return { ckRaw: ck0, inv: inv };
+    }
+    var h = hexOf(await crypto.subtle.digest("SHA-256", inv.id));
+    var ip = await invParts(pin, inv.a);
+    var b = null, cached = null;
+    try { cached = JSON.parse(localStorage.getItem(LS_INV_CLAIM) || "null"); } catch (eC) { cached = null; }
+    if (cached && cached.h === h && Date.now() - (cached.at || 0) < INV_TTL_MS) b = cached.b;
+    if (!b) {
+      if (!RELAIS_HTTP) throw joinErr("net");
+      var r, j = null;
+      try {
+        r = await invPost("/inv/claim", { h: h, v: ip.v });
+        try { j = await r.json(); } catch (eJ) { j = null; }
+      } catch (eN) { throw joinErr("net"); }
+      if (r.status === 403) { ep = new Error("pin"); ep.code = "pin"; ep.left = j && j.left; throw ep; }
+      if (r.status === 410) throw inviteRefused();
+      if (!r.ok || !j || !j.b) throw joinErr(r.status === 429 ? "other" : "net");
+      b = j.b;
+      /* Gardée ici (illisible sans le PIN) : un nouvel essai sur CE téléphone ne redemande pas le serveur. */
+      try { localStorage.setItem(LS_INV_CLAIM, JSON.stringify({ h: h, b: b, at: Date.now() })); } catch (eS) {}
+    }
+    var o;
+    try { o = JSON.parse(new TextDecoder().decode(await openBytes(JSON.parse(b), ip.k))); } catch (eD) { ep = new Error("pin"); ep.code = "pin"; throw ep; }
+    if (!o || !/^[0-9a-f]{32}$/.test(String(o.t || "")) || !o.k) throw joinErr("key");
+    var ckRaw = unb64(o.k);
+    relaisRemember(String(o.t), ckRaw);
+    return { ckRaw: ckRaw, inv: { topic: String(o.t), code: normInviteCode(o.c), vi: true } };
+  }
+
   async function makeInviteLink(code) {
     if (!secu || !sessionPin) return "";
+    if (RELAIS_HTTP) {
+      var id = crypto.getRandomValues(new Uint8Array(16));
+      var a = crypto.getRandomValues(new Uint8Array(32));
+      var ip = await invParts(sessionPin, a);
+      var blob = await sealBytes(new TextEncoder().encode(JSON.stringify({ t: secu.topic, k: b64(secu.ckRaw), c: normInviteCode(code) })), ip.k);
+      var res = await invPost("/inv/new", { h: hexOf(await crypto.subtle.digest("SHA-256", id)), v: ip.v, b: JSON.stringify(blob) });
+      if (!res.ok) throw joinErr("net");
+      return appBaseUrl() + "#vi=" + b64url(id) + "." + b64url(a);
+    }
     var w = await wrapWithPin(secu.ckRaw, sessionPin);
     var parts = [secu.topic, b64url(unb64(w.s)), b64url(unb64(w.i)), b64url(unb64(w.c))];
     var c = normInviteCode(code);
@@ -1960,6 +2152,10 @@
 
   function parseInvite(text) {
     var s = String(text || "");
+    var mv = s.match(/vi=([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{43})(?![A-Za-z0-9_-])/);
+    if (mv) {
+      try { return { vi: true, id: unb64url(mv[1]), a: unb64url(mv[2]), code: "", raw: mv[1] + "." + mv[2] }; } catch (eV) { return null; }
+    }
     var m = s.match(/vj=([0-9a-f]{32})\.([A-Za-z0-9_-]{16,32})\.([A-Za-z0-9_-]{12,24})\.([A-Za-z0-9_-]{40,80})(?:\.([A-Za-z0-9]{6}))?(?![A-Za-z0-9_-])/);
     if (!m) return null;
     var code = normInviteCode(m[5]);
@@ -2020,7 +2216,8 @@
 
   /* 1.99.4 : lit l’état chiffré sur TOUS les relais en parallèle (et non plus l’un après l’autre, 9 s chacun).
      Rejette avec code "net" (aucun relais joint) ou "empty" (relais joints, mais aucun état du cabinet). */
-  function peekAllRelays(id, ms) {
+  function peekAllRelays(id, ms, ckRaw) {
+    if (ckRaw) relaisRemember(id, ckRaw);
     return new Promise(function (resolve, reject) {
       if (!window.mqtt || !mqtt.connect) {
         waitMqttEnv(id, ms).then(function (env) { resolve({ env: env, relay: -1 }); }, function () { reject(joinErr("other")); });
@@ -2052,6 +2249,21 @@
         });
         c.on("error", function () {});
       });
+      /* 1.99.13 : le relais Vydel du cabinet, en parallèle des relais publics. */
+      var rk = RELAIS_URL ? relaisKeyFor(id) : null;
+      if (rk) {
+        var rcl = relaisConnect(id, rk, { once: true });
+        clients.push(rcl);
+        var wasR = false;
+        rcl.on("connect", function () { if (!wasR) { wasR = true; connected++; } });
+        rcl.on("message", function (t, payload) {
+          if (String(t) !== full) return;
+          try {
+            var env = JSON.parse(payloadToText(payload) || "{}");
+            if (env && env.ct && !env.kind) finish(null, { env: env, relay: "vydel" });
+          } catch (eP) {}
+        });
+      }
     });
   }
 
@@ -2061,7 +2273,14 @@
     if (!secu || !window.mqtt || !mqtt.connect) return Promise.resolve(0);
     return sealState(state).then(function (env) {
       var text = JSON.stringify(env), full = "tournee/" + secu.topic;
-      return Promise.all(MQTT_URLS.map(function (url) {
+      var viaVydel = (RELAIS_URL && secu.ckRaw) ? [new Promise(function (res) {
+        var over = false, rcl = relaisConnect(secu.topic, secu.ckRaw, { once: true });
+        var end = function (ok) { if (over) return; over = true; clearTimeout(tm); try { rcl.end(); } catch (eE) {} res(ok ? 1 : 0); };
+        var tm = setTimeout(function () { end(false); }, 15000);
+        rcl.on("connect", function () { rcl.publish(full, text, { retain: true, qos: 1 }, function (err) { end(!err); }); });
+        rcl.on("close", function () { end(false); });
+      })] : [];
+      return Promise.all(viaVydel.concat(MQTT_URLS.map(function (url) {
         return new Promise(function (res) {
           var c, over = false;
           var end = function (ok) { if (over) return; over = true; clearTimeout(tm); try { c.end(true); } catch (eE) {} res(ok ? 1 : 0); };
@@ -2072,7 +2291,7 @@
           c.on("connect", function () { c.publish(full, text, { retain: true, qos: 1 }, function (err) { end(!err); }); });
           c.on("error", function () {});
         });
-      }));
+      })));
     }).then(function (r) { return r.reduce(function (a, b) { return a + b; }, 0); }).catch(function () { return 0; });
   }
 
@@ -2095,12 +2314,21 @@
         } catch (eP) {}
       }
       var full = "tournee/" + id + (sub ? "/" + sub : "");
-      if (window.mqtt && mqtt.connect) {
-        var uidx = 0, client = null;
-        h = { close: function () { try { if (client) client.end(true); } catch (eE) {} client = null; } };
+      var rk = RELAIS_URL ? relaisKeyFor(id) : null;
+      if ((window.mqtt && mqtt.connect) || rk) {
+        var uidx = 0, client = null, rcl = null, pubDead = !(window.mqtt && mqtt.connect) || !MQTT_URLS.length, relDead = !rk;
+        h = { close: function () { try { if (client) client.end(true); } catch (eE) {} client = null; try { if (rcl) rcl.end(); } catch (eR) {} rcl = null; } };
+        /* 1.99.13 : le relais Vydel du cabinet, en parallèle du relais public. */
+        if (rk) {
+          rcl = relaisConnect(id, rk, { once: true });
+          rcl.on("message", function (t, payload) { if (String(t) === full) onText(payload); });
+          var relGone = function () { relDead = true; if (pubDead) finish(new Error("mqtt")); };
+          rcl.on("error", relGone);
+          rcl.on("close", relGone);
+        }
         var go = function () {
           if (done) return;
-          if (uidx >= MQTT_URLS.length) { finish(new Error("mqtt")); return; }
+          if (uidx >= MQTT_URLS.length) { pubDead = true; if (relDead) finish(new Error("mqtt")); return; }
           var url = MQTT_URLS[uidx++];
           var c;
           try {
@@ -2115,7 +2343,7 @@
           c.on("message", function (t, payload) { if (String(t) === full) onText(payload); });
           c.on("error", function () {});
         };
-        go();
+        if (!pubDead) go(); else if (relDead) finish(new Error("mqtt"));
         return;
       }
       if (!window.TourneeMqtt || sub) { finish(new Error("mqtt")); return; }
@@ -2124,26 +2352,28 @@
   }
 
   async function joinWithInvite(pin, inv) {
-    var ckRaw;
-    try { ckRaw = await unwrapWithPin(inv.w, pin); } catch (eW) { var ep = new Error("pin"); ep.code = "pin"; throw ep; }
+    var opened = await inviteOpen(inv, pin);
+    var ckRaw = opened.ckRaw;
+    inv = opened.inv;
     var ck = await importAes(ckRaw);
     /* Multi-cabinets (étape 1) : un téléphone qui a déjà un cabinet ne le perd jamais.
        Même cabinet : rien n’est réécrit (ni clé ni PIN). Autre cabinet : rangé à part, sans devenir actif. */
     var occupied = mainSlotOccupied();
     if (occupied && cabIdByTopic(inv.topic)) throw sideCabErr("same");
-    var got = await peekAllRelays(inv.topic, 25000);
+    var got = await peekAllRelays(inv.topic, 25000, ckRaw);
     var env = got.env;
     if (!env || !env.ct) throw joinErr("empty");
     var data;
     try { data = normState(await decryptEnvelope(env, ck)); } catch (eD) { throw joinErr("key"); }
     /* Usage unique : rien n’est enregistré sur ce téléphone si l’invitation est absente, utilisée ou révoquée. */
-    if (!findLiveInvite(data, inv.code)) throw inviteRefused();
+    if (!findLiveInvite(data, inv.code)) { invClaimClear(); throw inviteRefused(); }
     if (occupied) {
       var m2side = { v: 2, topic: inv.topic, at: (data.secu && data.secu.at) || Date.now(), wrap: await wrapWithPin(ckRaw, pin), old: null, closed: true };
       var metaSide = { salt: b64(crypto.getRandomValues(new Uint8Array(16))), pinHash: "", blobId: inv.topic, blobUrl: "mqtt:" + inv.topic, shareOk: true };
       /* L’invitation n’est pas encore marquée utilisée : elle le sera à la première ouverture de ce cabinet (étape 2). */
       addSideCabinet({ kind: "invitation", topic: inv.topic, inviteCode: normInviteCode(inv.code), name: cabNameOf(data), pinLen: String(pin).length === NEW_CABINET_PIN_LEN ? NEW_CABINET_PIN_LEN : 0 }, { "tournee.meta": metaSide, "tournee.meta2": m2side, "tournee.enc2": JSON.stringify(env) });
       pendingInvite = null;
+      invClaimClear();
       throw sideCabErr("added");
     }
     markInviteUsed(data, inv.code);
@@ -2162,6 +2392,7 @@
     unlocked = true;
     pendingInvite = null;
     try { await persist(true); } catch (eP) {} /* publie tout de suite : les autres téléphones voient l’invitation utilisée */
+    invClaimClear();
     ensureCabRegistry();
     enterApp(false);
   }
@@ -2232,8 +2463,13 @@
   async function useInviteOnLegacy(inv) {
     if (!inv || secu || !unlocked || !sessionPin) return false;
     var ckRaw;
-    try { ckRaw = await unwrapWithPin(inv.w, sessionPin); } catch (e) {
-      toast("Invitation : le PIN ne correspond pas.");
+    try {
+      var opened = await inviteOpen(inv, sessionPin);
+      ckRaw = opened.ckRaw;
+      inv = opened.inv;
+    } catch (e) {
+      if (e && e.code === "used") { askConfirm("Invitation refusée", INVITE_REFUSED_MSG, null); return false; }
+      toast(e && e.code === "pin" ? "Invitation : le PIN ne correspond pas." : "Invitation : connexion impossible. Vérifiez Internet, puis réessayez.");
       return false;
     }
     var remote = null;
@@ -2270,6 +2506,7 @@
       return false;
     }
     markInviteUsed(remote, inv.code);
+    invClaimClear();
     return adoptPointer({ t: inv.topic, k: b64(ckRaw), at: 0 }, remote, { archived: true });
   }
 
@@ -3085,7 +3322,7 @@
         }
         if (!(eI && (eI.code === "same" || eI.code === "added"))) stopMqtt();
         err.textContent = (eI && eI.code === "pin")
-          ? "PIN incorrect pour cette invitation."
+          ? "PIN incorrect pour cette invitation." + (eI.left ? " Encore " + eI.left + " essai" + (eI.left > 1 ? "s" : "") + " avec ce lien." : "")
           : (eI && eI.code === "used")
             ? INVITE_REFUSED_MSG
             : (eI && eI.code === "same")
@@ -5304,7 +5541,7 @@
 
   function inviteText(code, link) {
     if (link) {
-      return "Vydel — invitation\n\nOuvre ce lien sur ton téléphone :\n" + link + "\n\nSi l’appli est déjà installée sur l’écran d’accueil : ouvre-la, Rejoindre, et colle ce lien dans « Invitation ». Puis tape le PIN du cabinet. Le PIN se donne en personne, pas par message.\nInvitation : " + code;
+      return "Vydel — invitation\n\nOuvre ce lien sur ton téléphone :\n" + link + (link.indexOf("#vi=") !== -1 ? "\n(Lien valable 48 h, une seule fois.)" : "") + "\n\nSi l’appli est déjà installée sur l’écran d’accueil : ouvre-la, Rejoindre, et colle ce lien dans « Invitation ». Puis tape le PIN du cabinet. Le PIN se donne en personne, pas par message.\nInvitation : " + code;
     }
     return "Vydel — invitation\n\nOuvre l’appli :\n" + inviteAppUrl() + "\n\nPuis Rejoindre le cabinet. Le PIN se donne en personne, pas par message.\nInvitation : " + code;
   }
@@ -5340,6 +5577,7 @@
       return true;
     }).catch(function () {
       if (seq === inviteDraftSeq) { inviteLinkReady = true; paint(); }
+      toast("Lien d’invitation non créé : connexion Internet nécessaire. Réessayez.");
       return false;
     });
   }
@@ -8570,7 +8808,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.16-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.17-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 
@@ -9708,6 +9946,7 @@
     if ($("modal-menu")) $("modal-menu").hidden = true;
     renderFeedback();
     if ($("f-feedback")) $("f-feedback").value = "";
+    feedbackError("");
     if ($("modal-feedback")) $("modal-feedback").hidden = false;
   }
 
@@ -9725,6 +9964,29 @@
       return;
     }
     if (text.length > 400) text = text.slice(0, 400);
+    /* 1.99.13 : rien ne part (ni e-mail, ni copie dans le cabinet) si le texte ressemble à une info de patient. */
+    var hit = feedbackPatientHit(text);
+    feedbackError(hit ? "Envoi bloqué : le texte semble contenir " + hit + ". N’écrivez aucune information sur un patient : retirez-la, puis renvoyez." : "");
+    if (hit) return;
+    if (RETOUR_URL && !isDevPhone()) {
+      var btnS = $("btn-send-feedback");
+      if (btnS) btnS.disabled = true;
+      postFeedback(name, text).then(function (r) {
+        if (btnS) btnS.disabled = false;
+        if (r === "limit") { feedbackError("Limite atteinte : 5 retours par jour depuis ce téléphone. Réessayez demain."); return; }
+        if (r !== "ok") { toast("Retour non envoyé : vérifiez Internet, puis réessayez."); return; }
+        keepFeedback(name, text);
+        toast("Retour envoyé au développeur.");
+      });
+      return;
+    }
+    keepFeedback(name, text);
+    mailFeedback(name, text);
+    toast(isDevPhone() ? "Retour enregistré." : "Retour envoyé au développeur.");
+  }
+
+  function keepFeedback(name, text) {
+    var el = $("f-feedback");
     ensureTx();
     state.feedback.push({
       id: uid(),
@@ -9738,8 +10000,68 @@
     if (el) el.value = "";
     persist(true);
     renderFeedback();
-    mailFeedback(name, text);
-    toast(isDevPhone() ? "Retour enregistré." : "Retour envoyé au développeur.");
+  }
+
+  /* Filtre local (1.99.13) : n° de sécurité sociale, date de naissance, nom d’un patient de la liste de ce téléphone.
+     Rend une description de ce qui est trouvé, ou "" si rien. Rien ne quitte le téléphone pour ce contrôle. */
+  function fbNorm(x) { return String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+  function feedbackPatientHit(text) {
+    var t = String(text || "");
+    if (/(^|[^0-9])[12][\s.\-]?\d{2}[\s.\-]?(0[1-9]|1[0-2]|[2-9]\d)[\s.\-]?(\d{2}|2[ABab])[\s.\-]?\d{3}[\s.\-]?\d{3}([\s.\-]?\d{2})?([^0-9]|$)/.test(t)) return "un numéro de sécurité sociale";
+    var nt = fbNorm(t);
+    if (/(^|[^a-z])nee?\s+(le|en)\s/.test(nt) || /date\s+de\s+naissance|\bddn\b/.test(nt)) return "une date de naissance";
+    var yNow = new Date().getFullYear();
+    var re = /(^|[^0-9])(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})(?![0-9])/g, m;
+    while ((m = re.exec(t))) {
+      var y = Number(m[4]);
+      if (m[4].length === 2 || (y >= 1900 && y < yNow - 1)) return "une date de naissance";
+    }
+    if (/(^|[^0-9])\d{1,2}(er)?\s+(janv|fevr|mars|avr|mai|juin|juil|aout|sept|oct|nov|dec)[a-z]*\.?\s+(19\d{2}|20\d{2})(?![0-9])/.test(nt)) {
+      var my = nt.match(/(19\d{2}|20\d{2})(?![0-9])/);
+      if (my && Number(my[1]) < yNow - 1) return "une date de naissance";
+    }
+    var pts = (state && state.patients) || [];
+    for (var i = 0; i < pts.length; i++) {
+      var pt = pts[i];
+      if (!pt || pt.example) continue;
+      var nom = fbNorm(pt.nom).trim();
+      if (nom.length < 3) continue;
+      var esc = nom.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+      if (new RegExp("(^|[^a-z0-9])" + esc + "([^a-z0-9]|$)").test(nt)) return "le nom d’un patient (" + String(pt.nom).trim().slice(0, 40) + ")";
+    }
+    return "";
+  }
+  function feedbackError(msg) {
+    var e = $("feedback-error");
+    if (!e && msg) {
+      var ta = $("f-feedback");
+      if (!ta || !ta.parentNode) { toast(msg); return; }
+      e = document.createElement("p");
+      e.id = "feedback-error";
+      e.className = "error";
+      e.setAttribute("role", "alert");
+      ta.parentNode.insertBefore(e, ta.nextSibling);
+    }
+    if (!e) return;
+    e.textContent = msg || "";
+    e.hidden = !msg;
+  }
+  function feedbackDeviceId() {
+    var k = "tournee.fbDev", v = "";
+    try { v = localStorage.getItem(k) || ""; } catch (e) {}
+    if (!/^[A-Za-z0-9_-]{16,64}$/.test(v)) {
+      v = b64url(crypto.getRandomValues(new Uint8Array(16)));
+      try { localStorage.setItem(k, v); } catch (e2) {}
+    }
+    return v;
+  }
+  /* Retour par notre Worker (sans FormSubmit) : rend "ok", "limit" ou "err". Le Worker ne garde rien. */
+  function postFeedback(from, text) {
+    return fetch(RETOUR_URL + "/retour", {
+      method: "POST", mode: "cors", credentials: "omit", cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ n: String(from || "").slice(0, 24), t: String(text || "").slice(0, 400), d: feedbackDeviceId() })
+    }).then(function (r) { return r.ok ? "ok" : (r.status === 429 ? "limit" : "err"); }).catch(function () { return "err"; });
   }
 
   function mailFeedback(from, text) {
@@ -12871,7 +13193,7 @@
         joinAsExtra = true;
         if ($("join-error")) $("join-error").hidden = true;
         if ($("join-pin")) $("join-pin").value = "";
-        if ($("join-invite")) $("join-invite").value = "Invitation reçue ✓ vj=" + pendingInvite.raw;
+        if ($("join-invite")) $("join-invite").value = "Invitation reçue ✓ " + (pendingInvite.vi ? "vi=" : "vj=") + pendingInvite.raw;
         showScreen("screen-join");
         return;
       }
@@ -12888,7 +13210,7 @@
     } else if (pendingInvite) {
       if ($("join-error")) $("join-error").hidden = true;
       if ($("join-pin")) $("join-pin").value = "";
-      if ($("join-invite")) $("join-invite").value = "Invitation reçue ✓ vj=" + pendingInvite.raw;
+      if ($("join-invite")) $("join-invite").value = "Invitation reçue ✓ " + (pendingInvite.vi ? "vi=" : "vj=") + pendingInvite.raw;
       showScreen("screen-join");
     } else {
       showScreen("screen-welcome");
@@ -13137,10 +13459,10 @@
   (function () {
     try {
       var h = String(location.hash || "");
-      if (h.indexOf("vj=") === -1) return;
+      if (h.indexOf("vj=") === -1 && h.indexOf("vi=") === -1) return;
       var inv = parseInvite(h);
       if (inv) {
-        inv.raw = h.slice(h.indexOf("vj=") + 3);
+        if (!inv.vi) inv.raw = h.slice(h.indexOf("vj=") + 3);
         pendingInvite = inv;
       }
       history.replaceState(null, "", location.pathname + location.search);

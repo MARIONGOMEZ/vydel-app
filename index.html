@@ -9,15 +9,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Vydel">
   <meta name="description" content="Checklist Vydel pour IDEL. Pas un dossier médical.">
-  <meta name="tournee-version" content="1.99.16-app">
+  <meta name="tournee-version" content="1.99.17-app">
   <!-- Vydel v1 -->
   <title>Vydel</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="manifest" href="./manifest.json">
-  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=1.99.16-app">
-  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=1.99.16-app">
-  <link rel="stylesheet" href="./css/leaflet.css?v=1.99.16-app">
-  <link rel="stylesheet" href="./css/app.css?v=1.99.16-app">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=1.99.17-app">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=1.99.17-app">
+  <link rel="stylesheet" href="./css/leaflet.css?v=1.99.17-app">
+  <link rel="stylesheet" href="./css/app.css?v=1.99.17-app">
 </head>
 <body>
   <div id="app">
@@ -25,7 +25,7 @@
     <!-- CGU -->
     <section id="screen-cgu" class="screen" hidden>
       <div class="form-screen cgu-screen">
-        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.16-app" alt="">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.17-app" alt="">
         <h1>Conditions d’utilisation</h1>
         <div class="cgu-body">
           <p>Vydel est une <strong>checklist de passages</strong> pour IDEL. Ce n’est <strong>pas un dossier médical</strong> : pas de diagnostic, pas de pathologie, pas de notes cliniques. Uniquement le passage du jour.</p>
@@ -85,7 +85,7 @@
          comme pour « Démarrer l’essai de 14 jours » sur l’accueil -->
     <section id="screen-essai" class="screen" hidden>
       <div class="splash">
-        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.16-app" alt="">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.17-app" alt="">
         <h1>Essai gratuit de 14 jours</h1>
         <p class="lede">Voici la nouvelle application Vydel : la checklist du jour pour IDEL. Essayez-la pendant 14 jours ; si elle vous plaît, vous pourrez souscrire à l’abonnement (14,99 € par mois).</p>
         <p class="hint">Vous allez créer votre propre cabinet, protégé par un PIN de 6 chiffres.</p>
@@ -98,7 +98,7 @@
     <!-- Accueil -->
     <section id="screen-welcome" class="screen" hidden>
       <div class="splash">
-        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.16-app" alt="">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.17-app" alt="">
         <h1 id="welcome-title">Vydel</h1>
         <p class="lede">Checklist du jour pour IDEL. Pas un dossier médical — uniquement le passage.</p>
         <button type="button" class="btn btn-primary" id="btn-join">Rejoindre le cabinet</button>
@@ -112,7 +112,7 @@
     <!-- Vos cabinets (plusieurs cabinets sur ce téléphone, avant le PIN) -->
     <section id="screen-cabs" class="screen" hidden>
       <div class="choix-wrap">
-        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.16-app" alt="">
+        <img class="splash-icon" src="./icons/icon-192.png?v=1.99.17-app" alt="">
         <h1>Vos cabinets</h1>
         <p class="lede">Touchez le cabinet à ouvrir.</p>
         <div class="choix-list" id="cabs-list"></div>
@@ -124,7 +124,7 @@
     <!-- Code PIN (création / confirmation / déverrouillage) -->
     <section id="screen-pin" class="screen" hidden>
       <div class="pin-wrap">
-        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.16-app" alt="">
+        <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.17-app" alt="">
         <h1 id="pin-cab-name">Vydel</h1>
         <p id="pin-title" class="lede">Code PIN</p>
         <p id="pin-hint" class="hint">4 à 6 chiffres, partagé entre associées.</p>
@@ -189,7 +189,7 @@
       <div class="app-head">
         <header class="topbar">
           <button type="button" class="icon-btn" id="btn-menu" aria-label="Menu">
-            <img class="topbar-logo" src="./icons/icon-192.png?v=1.99.16-app" alt="">
+            <img class="topbar-logo" src="./icons/icon-192.png?v=1.99.17-app" alt="">
           </button>
           <div class="topbar-title">
             <div class="topbar-brand">
@@ -611,7 +611,7 @@
   <!-- Fin d’essai (1.99.8) : appli bloquée, export des données 30 jours, abonnement -->
   <div id="modal-essai-fin" class="modal modal-center modal-essai" hidden>
     <div class="sheet" role="dialog" aria-labelledby="essai-fin-title">
-      <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.16-app" alt="">
+      <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.17-app" alt="">
       <h2 id="essai-fin-title">Votre essai de 14 jours est terminé</h2>
       <p id="essai-fin-text" class="hint"></p>
       <button type="button" class="btn btn-primary" id="btn-essai-fin-sub">Souscrire — 14,99 € par mois</button>
@@ -698,7 +698,7 @@
   <!-- 1.99.12 : arrivée dans un cabinet — remplaçant en attente de validation, associé en attente de paiement -->
   <div id="modal-role" class="modal modal-center modal-essai" hidden>
     <div class="sheet" role="dialog" aria-labelledby="role-title">
-      <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.16-app" alt="">
+      <img class="splash-icon sm" src="./icons/icon-192.png?v=1.99.17-app" alt="">
       <h2 id="role-title">En attente de validation</h2>
       <p id="role-text" class="hint"></p>
       <p id="role-error" class="error" hidden></p>
@@ -1073,10 +1073,10 @@
 
 <div id="toast" class="toast" hidden role="status"></div>
 
-  <script src="./js/leaflet.js?v=1.99.16-app"></script>
-  <script src="./js/mqtt.min.js?v=1.99.16-app"></script>
-  <script src="./js/mqtt-lite.js?v=1.99.16-app"></script>
-  <script src="./js/import.js?v=1.99.16-app"></script>
-  <script src="./js/app.js?v=1.99.16-app" defer></script>
+  <script src="./js/leaflet.js?v=1.99.17-app"></script>
+  <script src="./js/mqtt.min.js?v=1.99.17-app"></script>
+  <script src="./js/mqtt-lite.js?v=1.99.17-app"></script>
+  <script src="./js/import.js?v=1.99.17-app"></script>
+  <script src="./js/app.js?v=1.99.17-app" defer></script>
 </body>
 </html>

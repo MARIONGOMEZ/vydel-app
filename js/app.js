@@ -45,8 +45,8 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.12-app";
-  var CGU_VER = "10"; /* 10 : « Essai gratuit et abonnement » (1.99.10) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
+  var APP_VER = "1.99.13-app";
+  var CGU_VER = "11"; /* 11 : abonnement de chaque associé, remplaçant validé par l’administrateur (1.99.13) */ /* 10 : « Essai gratuit et abonnement » (1.99.10) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
   var meta = null;
@@ -969,6 +969,7 @@
   holdToReveal($("btn-menu"), $("btn-change-pin"), "Mode urgence : le menu a une option de plus.");
 
   $("btn-join").addEventListener("click", function () {
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="join-role"]'), function (x) { x.checked = false; });
     $("join-error").hidden = true;
     $("join-pin").value = "";
     showScreen("screen-join");
@@ -3053,11 +3054,19 @@
       err.hidden = false;
       return;
     }
+    var jrEl = document.querySelector('input[name="join-role"]:checked');
+    if ($("join-role") && !jrEl) {
+      err.textContent = "Indiquez si vous êtes associé(e), remplaçant(e) ou déjà membre du cabinet.";
+      err.hidden = false;
+      return;
+    }
+    setJoinRolePending(jrEl ? jrEl.value : "");
     err.hidden = true;
     err.textContent = "Connexion…";
     err.hidden = false;
     var invRaw = $("join-invite") ? $("join-invite").value : "";
     var inv = parseInvite(invRaw) || pendingInvite;
+    try { if (inv && inv.code) sessionStorage.setItem(SS_JOIN_INV, String(inv.code)); else sessionStorage.removeItem(SS_JOIN_INV); } catch (eJI) {}
     if (inv) {
       try {
         await joinWithInvite(pin, inv);
@@ -3280,6 +3289,7 @@
     }
     if (!localDisplayName()) setTimeout(maybeAskPrenom, 400);
     else {
+      try { registerJoinRole(); } catch (eJR2) {}
       ensureSeatForMe();
       setTimeout(maybeAskTuto, fresh ? 700 : 500);
     }
@@ -5439,6 +5449,7 @@
     var t = state && state.trial;
     if (!essaiActive() || !t.bill) return "ok";
     now = now || Date.now();
+    if (mySeatPaid(now)) return "ok"; /* 1.99.12 : associé abonné — indépendant de l’abonnement du cabinet */
     if ((Number(t.paidUntil) || 0) > now) return "ok";
     var end = essaiAccessEnd(t);
     if (now >= end) return "blocked";
@@ -5474,6 +5485,7 @@
       var j = await essaiPost("/status", { tid: state.trial.tid, tok: state.trial.tok });
       essaiLastCheck = Date.now();
       essaiApplyStatus(j);
+      await seatSync().catch(function () {});
     } catch (e) {} finally {
       essaiSyncBusy = false;
       renderEssai();
@@ -5489,6 +5501,7 @@
     var ban = $("essai-banner");
     if (ban) ban.hidden = mode !== "warn";
     var fin = $("modal-essai-fin");
+    if (mode === "blocked" && unlocked && state && roleGate()) mode = "ok"; /* la porte « rôle » passe devant */
     if (fin) {
       fin.hidden = mode !== "blocked";
       if (mode === "blocked") {
@@ -5510,10 +5523,11 @@
       }
     }
     var mb = $("btn-abo-menu");
-    if (mb) mb.hidden = !(essaiActive() && state.trial.bill && !essaiPaid());
+    var meAssoc = unlocked && state && myRole() && myRole().role === "assoc";
+    if (mb) mb.hidden = !(essaiActive() && state.trial.bill && !essaiPaid()) || !!meAssoc;
     /* abonné : gérer / résilier en libre-service (portail Stripe, depuis vydel.fr/resilier.html) */
     var mg = $("btn-abo-gerer");
-    if (mg) mg.hidden = !(essaiActive() && essaiPaid());
+    if (mg) mg.hidden = !(essaiActive() && (meAssoc ? mySeatPaid() : essaiPaid()));
   }
   function openAbo() {
     if (!essaiActive()) { toast("Abonnement indisponible pour ce cabinet."); return; }
@@ -5545,11 +5559,12 @@
     var tick = function () {
       if (!unlocked || !essaiActive()) return;
       essaiSync(true).then(function () {
-        if (essaiPaid()) {
+        if ((myRole() && myRole().role === "assoc") ? mySeatPaid() : essaiPaid()) {
           clearInterval(aboPollTimer); aboPollTimer = null;
           try { localStorage.removeItem(SS_ABO_WAIT); sessionStorage.removeItem(SS_ABO_WAIT); } catch (e) {}
           if ($("modal-abo")) $("modal-abo").hidden = true;
-          toast("Abonnement actif : Vydel est débloquée. Merci !");
+          applyAccessGate();
+          toast((myRole() && myRole().role === "assoc") ? "Abonnement d’associé actif : bienvenue dans le cabinet !" : "Abonnement actif : Vydel est débloquée. Merci !");
         } else if (Date.now() - t0 > 120000) { clearInterval(aboPollTimer); aboPollTimer = null; }
       });
     };
@@ -5596,6 +5611,229 @@
       if (changed) { persist(true); renderTrialList(); }
     } catch (e) {}
   }
+
+
+  /* —— 1.99.13 (branche associe) : rôle à l’arrivée, remplaçant validé par l’administrateur, abonnement d’associé ——
+     state.roles[prénom replié] = { name, role: "assoc"|"remp", st, decl, t, by, mid, paidUntil, sub }
+       remp : st « wait » (en attente de validation), « ok » (validé), « no » (refusé)
+       assoc : st « pay » ; actif dès que le serveur (webhook Stripe) confirme le paiement de SA place (mid) : paidUntil.
+     La place d’associé (mid) est créée sur le serveur des essais (Worker vydel-essai, POST /seat) avec les identifiants
+     de l’essai du cabinet ; son abonnement Stripe est séparé (client_reference_id = m_<mid>). Aucun prénom n’y est envoyé.
+     Les membres d’avant la 1.99.12 (sans entrée) ne sont pas concernés. */
+  var SS_JOIN_ROLE = "tournee-join-role";
+  var SS_JOIN_INV = "tournee-join-inv";
+  var roleToastSeen = {};
+  function joinRolePending() {
+    try { var v = sessionStorage.getItem(SS_JOIN_ROLE) || ""; return v === "assoc" || v === "remp" ? v : ""; } catch (e) { return ""; }
+  }
+  function setJoinRolePending(v) {
+    try { if (v === "assoc" || v === "remp") sessionStorage.setItem(SS_JOIN_ROLE, v); else sessionStorage.removeItem(SS_JOIN_ROLE); } catch (e) {}
+  }
+  function roleOf(n) {
+    var f = foldName(n);
+    return f && state && state.roles && state.roles[f] ? state.roles[f] : null;
+  }
+  function myRole() { return state ? roleOf(localDisplayName()) : null; }
+  function mySeatPaid(now) {
+    var r = myRole();
+    return !!(r && r.role === "assoc" && (Number(r.paidUntil) || 0) > (now || Date.now()));
+  }
+  function roleLabel(r) {
+    if (!r) return "";
+    if (r.role === "assoc") {
+      if ((Number(r.paidUntil) || 0) > Date.now()) return "Associé(e) · abonnement actif jusqu’au " + formatDateFr(toISODate(new Date(r.paidUntil)));
+      return r.paidUntil > 0 ? "Associé(e) · abonnement terminé" : "Associé(e) · paiement en attente";
+    }
+    if (r.st === "ok") return "Remplaçant(e) · validé(e)";
+    if (r.st === "no") return "Remplaçant(e) · refusé(e)";
+    return "Remplaçant(e) · en attente de validation";
+  }
+  /* Enregistre le rôle choisi sur l’écran « Rejoindre », une fois le prénom connu. */
+  function registerJoinRole() {
+    var jr = joinRolePending();
+    if (!jr || !unlocked || !state) return false;
+    var me = localDisplayName();
+    if (!me || isAdmin()) { setJoinRolePending(""); return false; }
+    ensureTx();
+    if (!state.roles) state.roles = {};
+    var f = foldName(me);
+    if (state.roles[f] || rosterRole(me)) { setJoinRolePending(""); return false; }
+    /* Invitation utilisée : elle porte le rôle choisi par l’administrateur.
+       Invitation d’associé → associé (impossible de se déclarer remplaçant) ;
+       un remplaçant reste « en attente » jusqu’à la validation par l’administrateur dans « Personnes du cabinet ». */
+    var code = "", invR = null;
+    try { code = sessionStorage.getItem(SS_JOIN_INV) || ""; } catch (eC) {}
+    if (code) (state.invites || []).forEach(function (x) { if (x && String(x.code || "").toUpperCase() === String(code).toUpperCase() && x.usedAt) invR = x; });
+    if (invR && !invR.usedBy) invR.usedBy = me.slice(0, 24);
+    var role = jr, st = jr === "remp" ? "wait" : "pay";
+    var viaInv = 0;
+    if (invR && invR.role === "assoc") { role = "assoc"; st = "pay"; viaInv = 1; }
+    state.roles[f] = { name: me.slice(0, 24), role: role, st: st, decl: jr, t: Date.now(), by: me.slice(0, 24), mid: "", paidUntil: 0, sub: "" };
+    if (viaInv) state.roles[f].inv = 1;
+    try { sessionStorage.removeItem(SS_JOIN_INV); } catch (eC2) {}
+    jr = role;
+    setJoinRolePending("");
+    persist(true);
+    applyAccessGate();
+    if (jr === "assoc") seatEnsure().catch(function () {});
+    return true;
+  }
+  /* « wait » | « no » | « pay » | « ended » | null */
+  function roleGate() {
+    if (!state || !essaiActive() || !state.trial.bill) return null;
+    var me = localDisplayName();
+    if (!me || isAdmin()) return null;
+    var r = roleOf(me);
+    if (!r) return null;
+    if (r.role === "remp") return r.st === "ok" ? null : (r.st === "no" ? "no" : "wait");
+    if (mySeatPaid()) return null;
+    return r.paidUntil > 0 ? "ended" : "pay";
+  }
+  function renderRoleGate(g) {
+    var m = $("modal-role");
+    if (!m) return;
+    m.hidden = !g;
+    if (!g) return;
+    var r = myRole() || {};
+    var ttl = $("role-title"), txt = $("role-text"), pay = $("btn-role-pay");
+    if (g === "wait") {
+      ttl.textContent = "En attente de validation";
+      txt.textContent = "Vous avez indiqué être remplaçant(e). L’administrateur du cabinet doit valider votre accès dans « Personnes du cabinet ». En attendant, la tournée n’est pas visible sur ce téléphone.";
+    } else if (g === "no") {
+      ttl.textContent = "Accès non validé";
+      txt.textContent = "L’administrateur du cabinet n’a pas validé votre accès comme remplaçant(e). Rapprochez-vous de lui.";
+    } else if (g === "ended") {
+      ttl.textContent = "Votre abonnement d’associé est terminé";
+      txt.textContent = "Votre accès au cabinet est fermé. Le cabinet n’est pas touché. Souscrivez à nouveau pour continuer : 14,99 € par mois, avec votre propre abonnement.";
+    } else {
+      ttl.textContent = "Abonnement d’associé";
+      txt.textContent = (r.inv
+        ? "Votre invitation est une invitation d’associé(e). "
+        : r.decl === "remp"
+          ? "L’administrateur du cabinet vous a passé(e) associé(e). "
+          : "Vous rejoignez le cabinet comme associé(e). ")
+        + "Votre accès coûte 14,99 € par mois, avec votre propre abonnement, séparé de celui du cabinet et payé chaque mois. Il s’ouvre dès que Stripe confirme le paiement. Résiliation en ligne, à tout moment, sur vydel.fr/resilier.html.";
+    }
+    if (pay) pay.hidden = !(g === "pay" || g === "ended");
+    if ($("btn-role-check")) $("btn-role-check").textContent = (g === "pay" || g === "ended") ? "Déjà payé ? Vérifier" : "Vérifier";
+  }
+  /* Place d’associé sur le serveur (créée une fois, partagée dans l’état chiffré du cabinet). */
+  async function seatEnsure() {
+    var r = myRole();
+    if (!r || r.role !== "assoc" || !essaiActive()) throw new Error("role");
+    if (r.mid) return r.mid;
+    var j = await essaiPost("/seat", { tid: state.trial.tid, tok: state.trial.tok });
+    if (!j.ok || !j.mid) throw new Error("seat");
+    r = myRole();
+    if (r.mid) return r.mid;
+    r.mid = j.mid; r.t = Date.now();
+    persist(true);
+    return r.mid;
+  }
+  async function seatSync() {
+    if (!unlocked || !state || !essaiActive() || !state.roles) return;
+    var me = foldName(localDisplayName());
+    var ks = Object.keys(state.roles).filter(function (k) {
+      var r = state.roles[k];
+      return r && r.role === "assoc" && r.mid && (k === me || isAdmin());
+    });
+    var changed = false;
+    for (var i = 0; i < ks.length && i < 12; i++) {
+      var r = state.roles[ks[i]];
+      var j = await essaiPost("/seat/status", { tid: state.trial.tid, tok: state.trial.tok, mid: r.mid });
+      if (!j || !j.ok || j.mid !== r.mid) continue;
+      var pu = Number(j.paidUntil) || 0;
+      if (pu !== (Number(r.paidUntil) || 0) || String(j.sub || "") !== r.sub) { r.paidUntil = pu; r.sub = String(j.sub || ""); r.su = Date.now(); changed = true; }
+    }
+    if (changed) { persist(true); applyAccessGate(); renderEssai(); try { renderStaff(); } catch (e) {} }
+  }
+  async function seatCheckout() {
+    var err = $("role-error"), btn = $("btn-role-pay");
+    if (err) err.hidden = true;
+    if (btn) btn.disabled = true;
+    try {
+      var mid = await seatEnsure();
+      var j = await essaiPost("/seat/checkout", { tid: state.trial.tid, tok: state.trial.tok, mid: mid, ret: location.origin + location.pathname });
+      if (!j.ok || !j.url) throw new Error("checkout");
+      try { sessionStorage.setItem(SS_ABO_WAIT, String(Date.now())); localStorage.setItem(SS_ABO_WAIT, String(Date.now())); } catch (e) {}
+      location.assign(j.url);
+    } catch (e2) {
+      if (err) { err.hidden = false; err.textContent = "Paiement indisponible pour l’instant. Vérifiez la connexion et réessayez."; }
+    } finally { if (btn) btn.disabled = false; }
+  }
+  /* Administrateur : valider, refuser, passer associé / remplaçant. */
+  function setRole(name, patch) {
+    if (!isAdmin() || isKicked()) { toast("Réservé à un administrateur."); return false; }
+    var r = roleOf(name);
+    if (!r) return false;
+    Object.keys(patch).forEach(function (k) { r[k] = patch[k]; });
+    r.t = Date.now(); r.by = (localDisplayName() || "").slice(0, 24);
+    persist(true);
+    renderStaff(); renderRempCount(); applyAccessGate();
+    return true;
+  }
+  function validateRemp(name) {
+    if (rempSeatsUsed(name) >= REMP_MAX) {
+      toast("Limite atteinte : 2 remplaçants au plus par cabinet. Retirez un remplaçant ou annulez une invitation, ou passez cette personne associée.");
+      return;
+    }
+    if (setRole(name, { role: "remp", st: "ok" })) toast(name + " validé(e) comme remplaçant(e).");
+  }
+  function toAssoc(name) {
+    askConfirm("Passer " + name + " associé(e) ?", "Son accès sera fermé jusqu’à ce qu’elle ou il paie son propre abonnement d’associé : 14,99 € par mois, en plus de celui du cabinet.", function () {
+      if (setRole(name, { role: "assoc", st: "pay" })) toast(name + " passe associé(e) : le paiement lui est demandé.");
+    });
+  }
+  function toRemp(name) {
+    var r = roleOf(name);
+    if (r && (Number(r.paidUntil) || 0) > Date.now()) { toast("Abonnement d’associé en cours : il se résilie d’abord sur vydel.fr/resilier.html."); return; }
+    if (rempSeatsUsed(name) >= REMP_MAX) { toast("Limite atteinte : 2 remplaçants au plus par cabinet."); return; }
+    if (setRole(name, { role: "remp", st: "ok" })) toast(name + " passe remplaçant(e).");
+  }
+  function renderRoleList() {
+    var box = $("role-list"), h = $("role-h");
+    if (!box) return;
+    var list = Object.keys((state && state.roles) || {}).map(function (k) { return state.roles[k]; })
+      .filter(function (r) { return r && r.name && !isBlockedName(r.name); })
+      .sort(function (a, b) { return (a.st === "wait" ? 0 : 1) - (b.st === "wait" ? 0 : 1) || (b.t || 0) - (a.t || 0); });
+    box.hidden = !list.length; if (h) h.hidden = !list.length;
+    box.innerHTML = "";
+    list.forEach(function (r) {
+      var row = document.createElement("div");
+      row.className = "staff-row role-row";
+      var nm = document.createElement("p"); nm.className = "staff-name"; nm.textContent = r.name;
+      var mt = document.createElement("p"); mt.className = "staff-meta" + (r.st === "wait" ? " is-wait" : ""); mt.textContent = roleLabel(r)
+        + (r.decl !== r.role ? " (s’était déclaré(e) " + (r.decl === "assoc" ? "associé(e)" : "remplaçant(e)") + ")" : "");
+      row.appendChild(nm); row.appendChild(mt);
+      if (isAdmin() && !isKicked()) {
+        var acts = document.createElement("div"); acts.className = "row-btns";
+        function b(label, cls, fn) { var x = document.createElement("button"); x.type = "button"; x.className = "btn " + cls; x.textContent = label; x.addEventListener("click", fn); acts.appendChild(x); }
+        if (r.role === "remp" && r.st !== "ok") b("Valider (remplaçant)", "btn-primary", function () { validateRemp(r.name); });
+        if (r.role === "remp") b("Passer associé — 14,99 €/mois", "btn-ghost", function () { toAssoc(r.name); });
+        if (r.role === "remp" && r.st === "wait") b("Refuser", "btn-ghost", function () { setRole(r.name, { st: "no" }); });
+        if (r.role === "assoc" && !((Number(r.paidUntil) || 0) > Date.now())) b("Passer remplaçant", "btn-ghost", function () { toRemp(r.name); });
+        row.appendChild(acts);
+      }
+      box.appendChild(row);
+    });
+  }
+  /* Administrateur : une arrivée en attente → message une fois par personne et par ouverture. */
+  function noticePendingRoles() {
+    if (!unlocked || !state || !state.roles || !isAdmin() || isKicked()) return;
+    Object.keys(state.roles).forEach(function (k) {
+      var r = state.roles[k];
+      if (!r || r.st !== "wait" || roleToastSeen[k]) return;
+      roleToastSeen[k] = 1;
+      toast(r.name + " demande à rejoindre comme remplaçant(e) : à valider dans Menu → Personnes du cabinet.");
+    });
+  }
+  setInterval(noticePendingRoles, 5000);
+  if ($("btn-role-pay")) $("btn-role-pay").addEventListener("click", seatCheckout);
+  if ($("btn-role-check")) $("btn-role-check").addEventListener("click", function () {
+    toast("Vérification…");
+    essaiSync(true).then(function () { applyAccessGate(); if (!roleGate()) toast("Accès ouvert. Bienvenue !"); });
+  });
+  if ($("btn-role-lock")) $("btn-role-lock").addEventListener("click", function () { if ($("modal-role")) $("modal-role").hidden = true; lockNow(); });
 
   /* —— Essais de 14 jours (1.98) ——
      Codes signés ECDSA P-256 (WebCrypto), plus aucun secret dans l’appli.
@@ -6244,7 +6482,8 @@
       return;
     }
     /* 1.99.8 : 2 remplaçants au plus par cabinet (invitations en attente + remplaçants qui ont rejoint et ne sont pas retirés) */
-    if (rempSeatsUsed() >= REMP_MAX) {
+    var invRole = $("invite-role") && $("invite-role").value === "assoc" ? "assoc" : "remp";
+    if (invRole === "remp" && rempSeatsUsed() >= REMP_MAX) {
       var em = "Limite atteinte : 2 remplaçants au plus par cabinet. Pour en inviter un autre, annulez une invitation en attente ou retirez un remplaçant dans « Personnes du cabinet ».";
       if ($("invite-error")) { $("invite-error").hidden = false; $("invite-error").textContent = em; }
       toast(em);
@@ -6256,6 +6495,7 @@
     var label = String(($("invite-for") && $("invite-for").value) || "").replace(/\s+/g, " ").trim().slice(0, 24);
     var rec = { code: token, createdAt: Date.now(), usedAt: null, v: 2 };
     if (label) rec.label = label;
+    if (invRole === "assoc") rec.role = "assoc"; /* 1.99.12 : invitation d’associé (hors limite des remplaçants) */
     state.invites.push(rec);
     if ($("invite-for")) $("invite-for").value = "";
     await persist(true);
@@ -6295,14 +6535,25 @@
      - une invitation utilisée par une personne qui n’a pas été retirée (et qui n’est pas administrateur).
      Une place se libère quand l’invitation en attente est révoquée (annulation) ou quand la personne est retirée. */
   var REMP_MAX = 2;
-  function rempSeatsUsed() {
+  function rempSeatsUsed(exceptName) {
     ensureTx();
-    var n = 0;
+    var n = 0, countedR = {}, ex = exceptName ? foldName(exceptName) : "";
     (state.invites || []).forEach(function (inv) {
       if (!inv || !inv.code || isLegacyInvite(inv) || inv.revokedAt) return;
+      if (inv.role === "assoc") return;
+      var rw = inv.usedBy ? roleOf(inv.usedBy) : null;
+      if (rw && rw.role === "assoc") return;
+      if (ex && inv.usedBy && foldName(inv.usedBy) === ex) return;
       if (!inv.usedAt) { n++; return; }
       var who = String(inv.usedBy || "");
       if (who && (isBlockedName(who) || rosterRole(who) === "admin")) return;
+      if (who) countedR[foldName(who)] = 1;
+      n++;
+    });
+    /* 1.99.12 : remplaçants validés par l’administrateur (arrivés avec le PIN, sans invitation) */
+    Object.keys(state.roles || {}).forEach(function (k) {
+      var r = state.roles[k];
+      if (!r || r.role !== "remp" || r.st !== "ok" || countedR[k] || k === ex || isBlockedName(r.name)) return;
       n++;
     });
     return n;
@@ -6357,7 +6608,7 @@
     head.className = "invite-card-head";
     var who = document.createElement("strong");
     who.className = "invite-who" + (inv.label ? "" : " invite-who-none");
-    who.textContent = inv.label || "Sans nom";
+    who.textContent = (inv.label || "Sans nom") + (inv.role === "assoc" ? " · associé(e)" : "");
     var st = document.createElement("span");
     st.className = "invite-state " + (inv.usedAt ? "is-used" : inv.revokedAt ? "is-revoked" : "is-wait");
     st.textContent = inv.usedAt ? "Utilisée le " + inviteDateLabel(inv.usedAt) : inv.revokedAt ? "Révoquée" : "En attente";
@@ -6850,11 +7101,43 @@
       trials: mergeTrials(a.trials, b.trials),
       trialIssuer: mergeTrialIssuer(a.trialIssuer, b.trialIssuer),
       trial: mergeTrialInfo(a.trial, b.trial),
+      roles: mergeRoles(a.roles, b.roles),
       imports: mergeImports(a.imports, b.imports)
     };
   }
 
 
+
+  /* 1.99.12 : rôles déclarés à l’arrivée (clé = prénom replié). Le plus récent gagne ;
+     pour une même place d’associé (mid), l’état payé le plus récemment lu sur le serveur (su) est gardé. */
+  function mergeRoles(a, b) {
+    var out = {};
+    function consider(src) {
+      Object.keys(src || {}).forEach(function (k) {
+        var r = src[k];
+        if (!r || !r.name) return;
+        var key = foldName(r.name);
+        if (!key) return;
+        var c = {
+          name: String(r.name).trim().slice(0, 24), role: r.role === "assoc" ? "assoc" : "remp",
+          st: ["wait", "ok", "no", "pay"].indexOf(r.st) >= 0 ? r.st : "wait",
+          decl: r.decl === "assoc" ? "assoc" : "remp", t: Number(r.t) || 0, by: String(r.by || "").slice(0, 24),
+          mid: /^[0-9a-f]{32}$/.test(String(r.mid || "")) ? String(r.mid) : "", paidUntil: Number(r.paidUntil) || 0, sub: String(r.sub || "").slice(0, 20)
+        };
+        if (r.inv) c.inv = 1;
+        c.su = Number(r.su) || 0; /* dernière lecture du serveur (paidUntil / sub) */
+        var p = out[key];
+        if (!p) { out[key] = c; return; }
+        var w = c.t >= p.t ? c : p, o = w === c ? p : c;
+        if (!w.mid && o.mid) w.mid = o.mid;
+        if (w.mid && w.mid === o.mid && o.su > w.su) { w.paidUntil = o.paidUntil; w.sub = o.sub; w.su = o.su; }
+        out[key] = w;
+      });
+    }
+    consider(a);
+    consider(b);
+    return out;
+  }
 
   function mergeRoster(a, b) {
     var out = {};
@@ -7121,9 +7404,11 @@
         if (inv.label) prev.label = String(inv.label).slice(0, 24);
         if (inv.lastSentAt) prev.lastSentAt = inv.lastSentAt;
         if (inv.v === 2) prev.v = 2;
+        if (inv.role === "assoc") prev.role = "assoc"; /* 1.99.12 : invitation d’associé */
         return;
       }
       if (inv.v === 2) prev.v = 2;
+      if (inv.role === "assoc") prev.role = "assoc";
       if (inv.label && !prev.label) prev.label = String(inv.label).slice(0, 24);
       if ((inv.lastSentAt || 0) > (prev.lastSentAt || 0)) prev.lastSentAt = inv.lastSentAt;
       if ((inv.createdAt || 0) < (prev.createdAt || 0) || !prev.createdAt) prev.createdAt = inv.createdAt || prev.createdAt;
@@ -7131,7 +7416,7 @@
       if (inv.usedAt && (!prev.usedAt || inv.usedAt < prev.usedAt)) {
         prev.usedAt = inv.usedAt;
         if (inv.usedBy) prev.usedBy = inv.usedBy; else delete prev.usedBy;
-      }
+      } else if (inv.usedAt && inv.usedAt === prev.usedAt && inv.usedBy && !prev.usedBy) prev.usedBy = inv.usedBy; /* 1.99.12 : prénom connu après l’arrivée */
       if (inv.revokedAt && (!prev.revokedAt || inv.revokedAt < prev.revokedAt)) prev.revokedAt = inv.revokedAt;
     });
     return Object.keys(map).map(function (k) { return map[k]; });
@@ -8212,7 +8497,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.12-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.13-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 
@@ -8418,6 +8703,7 @@
     }
     if (!acceptSeatName(raw, cur)) return;
     var n = setLocalDisplayName(raw);
+    try { registerJoinRole(); } catch (eJR) {}
     var thenSend = prenomThenSend;
     var wasRequired = prenomRequired;
     setPrenomModalRequired(false);
@@ -9002,11 +9288,21 @@
       toast("Ce prénom est réservé.");
       return false;
     }
+    var jr = joinRolePending();
+    if (jr && !cur && rosterCount("admin") > 0) {
+      /* 1.99.12 : nouvel arrivant (associé ou remplaçant) — un prénom déjà connu du cabinet est refusé */
+      if (rosterRole(raw) || roleOf(raw)) {
+        toast("Ce prénom est déjà utilisé dans ce cabinet. Choisissez-en un autre (ex. Léa M.), ou revenez en arrière et choisissez « Déjà membre ».");
+        return false;
+      }
+      return true;
+    }
     var role = rosterRole(raw);
     if (role) {
       if (cur && foldName(cur) !== foldName(raw)) renameRoster(cur, raw);
       return true;
     }
+    if (roleOf(raw) && cur && foldName(cur) === foldName(raw)) return true;
     if (rosterCount("admin") === 0) {
       upsertRoster(raw, "admin");
       return true;
@@ -9020,6 +9316,7 @@
     var me = localDisplayName();
     if (!me || isHiddenPresence(me) || isDevPhone()) return false;
     if (rosterRole(me)) return false;
+    if (roleOf(me)) return false; /* 1.99.12 : arrivée déclarée → porte « rôle » (roleGate) */
     return rosterCount("admin") > 0;
   }
 
@@ -9088,11 +9385,13 @@
   }
 
   function isKicked() {
-    return unlocked && !!localDisplayName() && isBlockedName(localDisplayName());
+    return unlocked && !!localDisplayName() && (isBlockedName(localDisplayName()) || !!roleGate());
   }
 
   function applyAccessGate() {
     var kicked = isKicked() || seatLocked();
+    var rg = unlocked && localDisplayName() && !isBlockedName(localDisplayName()) ? roleGate() : null;
+    renderRoleGate(rg);
     if ($("kicked-text")) {
       $("kicked-text").textContent = (seatLocked() && !isKicked())
         ? "Un administrateur doit d’abord ajouter ce prénom. 2 administrateurs et 3 collaborateurs maximum."
@@ -9100,7 +9399,7 @@
           ? "Un administrateur a retiré cet accès."
           : "Un administrateur a retiré cet accès.");
     }
-    if ($("modal-kicked")) $("modal-kicked").hidden = !kicked;
+    if ($("modal-kicked")) $("modal-kicked").hidden = !kicked || !!rg;
     if ($("btn-staff")) $("btn-staff").hidden = !isAdmin() || kicked;
     if ($("btn-invite-menu")) $("btn-invite-menu").hidden = !isAdmin() || kicked;
     if ($("btn-beta-mint")) $("btn-beta-mint").hidden = !isAdmin() || kicked;
@@ -9139,6 +9438,10 @@
       var rec = state.blocked[k];
       if (rec && rec.name) add(rec.name, "asso");
     });
+    Object.keys(state.roles || {}).forEach(function (k) {
+      var r = state.roles[k];
+      if (r && r.name && r.st !== "wait" && r.st !== "no") add(r.name, "collab");
+    });
     var me = localDisplayName();
     if (!seatPlanOn() && me && foldName(me) !== "developpeur") add(me, isAdminName(me) ? "admin" : "asso");
     var list = Object.keys(map).map(function (k) { return map[k]; });
@@ -9168,6 +9471,7 @@
       if (p.role === "admin") meta.textContent = "Administrateur";
       else if (p.role === "dev") meta.textContent = "Développeur";
       else if (isBlockedName(p.name)) meta.textContent = "Accès retiré";
+      else if (roleOf(p.name)) meta.textContent = roleLabel(roleOf(p.name));
       else meta.textContent = seatPlanOn() ? "Collaborateur" : "Associé";
       left.appendChild(name);
       left.appendChild(meta);
@@ -9200,6 +9504,7 @@
     });
     }
     fill($("staff-list"));
+    try { renderRoleList(); } catch (eRL) {}
     if ($("seat-count")) {
       $("seat-count").textContent = seatPlanOn()
         ? (rosterCount("admin") + " / 2 administrateurs · " + rosterCount("collab") + " / 3 collaborateurs")
@@ -9221,7 +9526,9 @@
       toast("Impossible de retirer un administrateur.");
       return;
     }
-    askConfirm("Retirer " + name + " ?", "Cette personne ne verra plus la tournée. Pour couper vraiment l’accès, changez aussi le PIN.", function () {
+    var rAs = roleOf(name);
+    askConfirm("Retirer " + name + " ?", "Cette personne ne verra plus la tournée. Pour couper vraiment l’accès, changez aussi le PIN."
+      + (rAs && rAs.role === "assoc" && rAs.mid ? " Son abonnement d’associé n’est pas arrêté par ce retrait : il se résilie sur vydel.fr/resilier.html." : ""), function () {
       ensureTx();
       if (!state.blocked) state.blocked = {};
       state.blocked[foldName(name)] = {

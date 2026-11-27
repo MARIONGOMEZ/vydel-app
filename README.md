@@ -6,6 +6,7 @@ Copie publique de l’appli Vydel pour l’essai gratuit de 14 jours, servie sur
 - « Rejoindre le cabinet » : collègue d’un cabinet existant, avec le PIN (et le lien d’invitation si reçu).
 - Notifications (1.99.4) : menu → « Activer les notifications » ; « Nouvelle transmission dans ton cabinet » / « Nouveau message dans ton cabinet », sans nom ni texte. Serveur d’envoi : https://vydel-push.vydel-push.workers.dev (Cloudflare Worker). iPhone : iOS 16.4+, appli ajoutée à l’écran d’accueil.
 - Photos de documents (1.99.6) : une copie chiffrée sur le téléphone (clé du cabinet) est gardée en ligne (Cloudflare Worker https://vydel-photos.vydel-push.workers.dev, KV) ; le serveur ne reçoit que des blocs illisibles sous un nom HMAC non devinable, effacés à la suppression ou à leur date d’effacement.
+- 1.99.13 (branche associe, non publiée) : à l’arrivée dans un cabinet, chacun indique « Associé(e) », « Remplaçant(e) » ou « Déjà membre ». Remplaçant : en attente (tournée cachée) jusqu’à la validation par l’administrateur (Personnes du cabinet → Arrivées), 2 au plus. Associé : son propre abonnement Stripe de 14,99 €/mois (place d’associé sur le Worker vydel-essai, client_reference_id m_<mid>), accès ouvert par le webhook ; l’administrateur peut passer un remplaçant associé ; invitation « Associé(e) » (hors limite des remplaçants) ; CGU 11.
 - 1.99.12 : menu admin, entrée et titre de la fenêtre : retour au libellé « Proposer l’essai 14 jours ».
 - 1.99.11 : adresse de contact contact@vydel.fr (CGU, fin d’essai, abonnement, messages d’erreur de l’essai et du paiement).
 - 1.99.10 : essai de 14 jours émis par le serveur (Worker vydel-essai) à la création du cabinet, un par téléphone ; lien d’essai unique https://app.vydel.fr/essai (« Copier le lien d’essai », « Partager ») ; menu admin : « Démarrer l’essai de 14 jours » et « Inviter un remplaçant » (2 au plus) ; « Gérer / résilier mon abonnement » (vydel.fr/resilier.html) ; bandeau + notification J-2 ; à J+14 sans abonnement, appli bloquée (Exporter mes données pendant 30 jours, Souscrire) ; écran Souscrire 14,99 € par mois (Stripe Payment Link), débloqué dès le paiement ; CGU 10 « Essai gratuit et abonnement ».
@@ -15,4 +16,4 @@ Copie publique de l’appli Vydel pour l’essai gratuit de 14 jours, servie sur
 
 Contact : contact@vydel.fr
 
-Version : 1.99.12-app. © 2026 Orva Labs.
+Version : 1.99.13-app (branche associe, non publiée). © 2026 Orva Labs.

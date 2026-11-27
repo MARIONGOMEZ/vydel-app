@@ -2270,3 +2270,15 @@ textarea.tx-area.onb-paste { box-sizing: border-box; }
 #essai-link-actions { display: flex; gap: 8px; }
 #essai-link-actions .btn { flex: 1; margin-top: 0; }
 #essai-link-actions .btn[hidden] { display: none; }
+
+/* 1.99.12 : rôle à l’arrivée (associé / remplaçant / déjà membre) */
+.join-role { border: 0; padding: 0; margin: 14px 0 4px; }
+.join-role legend { font-weight: 600; margin-bottom: 6px; }
+.join-role-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid rgba(0,0,0,.14); border-radius: 12px; margin: 0 0 8px; cursor: pointer; }
+.join-role-opt input { margin-top: 3px; width: auto; }
+.join-role-opt span { display: flex; flex-direction: column; gap: 2px; }
+.join-role-opt small { font-size: 13px; opacity: .78; font-weight: 400; }
+.join-role-opt:has(input:checked) { border-color: #0f7b6c; box-shadow: 0 0 0 1px #0f7b6c inset; }
+.role-row .staff-meta.is-wait { color: #a15c00; }
+.role-row .row-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.role-row { flex-direction: column; align-items: stretch; }

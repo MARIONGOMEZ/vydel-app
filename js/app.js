@@ -103,8 +103,8 @@
     return true;
   });
   var RELAIS_HTTP = RELAIS_URL ? RELAIS_URL.replace(/^ws/, "http") : "";
-  /* 1.99.13 : retours (Question SAV). Vide = FormSubmit, comme avant (l’envoi d’e-mails par notre Worker n’est pas encore branché). */
-  var RETOUR_URL = "";
+  /* Retours (Question SAV) : envoyés par notre Worker vydel-relais (POST /retour : 5 par téléphone et par jour, rien n’est gardé). Plus de FormSubmit. */
+  var RETOUR_URL = "https://vydel-relais.vydel-push.workers.dev";
   var voiceBlobs = {};
   var recMedia = null;
   var recStream = null;
@@ -9970,7 +9970,13 @@
     var hit = feedbackPatientHit(text);
     feedbackError(hit ? "Envoi bloqué : le texte semble contenir " + hit + ". N’écrivez aucune information sur un patient : retirez-la, puis renvoyez." : "");
     if (hit) return;
-    if (RETOUR_URL && !isDevPhone()) {
+    if (isDevPhone()) {
+      /* Téléphone du développeur : le retour reste dans le cabinet, aucun e-mail. */
+      keepFeedback(name, text);
+      toast("Retour enregistré.");
+      return;
+    }
+    if (RETOUR_URL) {
       var btnS = $("btn-send-feedback");
       if (btnS) btnS.disabled = true;
       postFeedback(name, text).then(function (r) {
@@ -9982,9 +9988,7 @@
       });
       return;
     }
-    keepFeedback(name, text);
-    mailFeedback(name, text);
-    toast(isDevPhone() ? "Retour enregistré." : "Retour envoyé au développeur.");
+    toast("Retour non envoyé : réessayez plus tard.");
   }
 
   function keepFeedback(name, text) {
@@ -10064,22 +10068,6 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ n: String(from || "").slice(0, 24), t: String(text || "").slice(0, 400), d: feedbackDeviceId() })
     }).then(function (r) { return r.ok ? "ok" : (r.status === 429 ? "limit" : "err"); }).catch(function () { return "err"; });
-  }
-
-  function mailFeedback(from, text) {
-    try {
-      fetch("https://formsubmit.co/ajax/fff28a12891b09e68380576bf3c52be8", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({
-          _subject: "Vydel — retour bêta (" + from + ")",
-          _template: "box",
-          _captcha: "false",
-          prenom: String(from || "").slice(0, 24),
-          message: String(text || "").slice(0, 400)
-        })
-      }).catch(function () {});
-    } catch (e) {}
   }
 
   if ($("btn-feedback")) $("btn-feedback").addEventListener("click", openFeedback);

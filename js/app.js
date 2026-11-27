@@ -45,8 +45,8 @@
   var PUT_DEBOUNCE = 1400;
   var LOCK_HIDDEN_MS = 900000;
   var PBKDF2_ITERS = 100000;
-  var APP_VER = "1.99.14-app";
-  var CGU_VER = "11"; /* 11 (non publiée) : chaque associé paie, y compris celui qui a créé le cabinet (abonnement du cabinet) ; essai des associés ; l’administrateur peut payer pour l’associé (1.99.13–1.99.14) */ /* 10 : « Essai gratuit et abonnement » (1.99.10) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
+  var APP_VER = "1.99.15-app";
+  var CGU_VER = "11"; /* 11 (non publiée) : chaque associé paie, y compris celui qui a créé le cabinet (abonnement du cabinet) ; essai des associés ; chaque associé paie et résilie lui-même son abonnement (1.99.13–1.99.15) */ /* 10 : « Essai gratuit et abonnement » (1.99.10) ; 9 : photos gardées en ligne, chiffrées (1.99.6) — fait relire les CGU ; 8 : section « Chiffrement de vos données » (1.91) */
 
   var $ = function (id) { return document.getElementById(id); };
   var meta = null;
@@ -5530,14 +5530,14 @@
     }
     var mb = $("btn-abo-menu");
     var meAssoc = unlocked && state && assocOnTrialRules();
-    /* 1.99.14 : un associé peut payer son abonnement depuis le menu (pendant l’essai aussi) ; « Gérer » seulement s’il a payé lui-même */
+    /* 1.99.15 : un associé paie son abonnement depuis le menu (pendant l’essai aussi) et le gère / résilie lui-même */
     if (mb) {
       mb.hidden = meAssoc ? !(essaiActive() && state.trial.bill && !mySeatPaid()) : !(essaiActive() && state.trial.bill && !essaiPaid());
       mb.textContent = meAssoc ? "Payer mon abonnement d’associé(e)" : "Souscrire à Vydel";
     }
     /* abonné : gérer / résilier en libre-service (portail Stripe, depuis vydel.fr/resilier.html) */
     var mg = $("btn-abo-gerer");
-    if (mg) mg.hidden = !(essaiActive() && (meAssoc ? (mySeatPaid() && myRole().payBy !== "admin") : essaiPaid()));
+    if (mg) mg.hidden = !(essaiActive() && (meAssoc ? mySeatPaid() : essaiPaid()));
   }
   function openAbo() {
     if (!essaiActive()) { toast("Abonnement indisponible pour ce cabinet."); return; }
@@ -5570,14 +5570,12 @@
     var tick = function () {
       if (!unlocked || !essaiActive()) return;
       essaiSync(true).then(function () {
-        var wm = seatWaitMid();
-        if (wm ? seatMidPaid(wm) : (assocOnTrialRules() ? mySeatPaid() : essaiPaid())) {
+        if (assocOnTrialRules() ? mySeatPaid() : essaiPaid()) {
           clearInterval(aboPollTimer); aboPollTimer = null;
           try { localStorage.removeItem(SS_ABO_WAIT); sessionStorage.removeItem(SS_ABO_WAIT); } catch (e) {}
           if ($("modal-abo")) $("modal-abo").hidden = true;
           applyAccessGate();
-          if (wm) { seatWaitSet(""); try { renderStaff(); } catch (eS) {} toast("Abonnement d’associé payé : son accès est ouvert."); }
-          else toast(assocOnTrialRules() ? "Abonnement d’associé actif : bienvenue dans le cabinet !" : "Abonnement actif : Vydel est débloquée. Merci !");
+          toast(assocOnTrialRules() ? "Abonnement d’associé actif : bienvenue dans le cabinet !" : "Abonnement actif : Vydel est débloquée. Merci !");
         } else if (Date.now() - t0 > 120000) { clearInterval(aboPollTimer); aboPollTimer = null; }
       });
     };
@@ -5649,22 +5647,12 @@
   function myRole() { return state ? roleOf(localDisplayName()) : null; }
   /* 1.99.14 : l’administrateur est l’associé qui a créé le cabinet ; son abonnement est celui du cabinet (state.trial).
      Les autres associés (rôle « assoc ») ont chacun le leur : gratuit pendant l’essai du cabinet, puis 14,99 €/mois.
-     L’administrateur peut payer pour l’associé, et l’associé peut payer aussi, de son côté, indépendamment. */
+     1.99.15 : seul l’associé paie et résilie son abonnement (l’administrateur n’a aucun rôle de paiement pour lui). */
   function assocOnTrialRules() {
     var r = myRole();
     return !!(r && r.role === "assoc" && !isAdmin());
   }
   function cabTrialEnd() { return Number(state && state.trial && state.trial.end) || 0; }
-  var LS_SEAT_WAIT = "tournee-seat-wait";
-  function seatWaitMid() {
-    try { var v = JSON.parse(localStorage.getItem(LS_SEAT_WAIT) || "null"); return v && v.mid && Date.now() - v.at < 30 * 60000 ? String(v.mid) : ""; } catch (e) { return ""; }
-  }
-  function seatWaitSet(mid) { try { if (mid) localStorage.setItem(LS_SEAT_WAIT, JSON.stringify({ mid: mid, at: Date.now() })); else localStorage.removeItem(LS_SEAT_WAIT); } catch (e) {} }
-  function seatMidPaid(mid) {
-    var ok = false;
-    Object.keys((state && state.roles) || {}).forEach(function (k) { var r = state.roles[k]; if (r && r.mid === mid && (Number(r.paidUntil) || 0) > Date.now()) ok = true; });
-    return ok;
-  }
   var ESSAI_BANNER_DEFAULT = null;
   function renderEssaiBannerText() {
     var p = $("essai-banner-text"), b = $("btn-essai-banner-sub");
@@ -5672,7 +5660,7 @@
     if (ESSAI_BANNER_DEFAULT === null) ESSAI_BANNER_DEFAULT = p.textContent;
     var a = unlocked && state && assocOnTrialRules();
     p.textContent = a
-      ? "Attention, l’essai de 14 jours du cabinet se termine dans deux jours. Ensuite, votre accès d’associé(e) sera bloqué tant que votre abonnement de 14,99 € par mois n’est pas payé. L’administrateur du cabinet peut payer pour vous, et vous pouvez payer aussi, de votre côté, indépendamment."
+      ? "Attention, l’essai de 14 jours du cabinet se termine dans deux jours. Ensuite, votre accès d’associé(e) sera bloqué tant que votre abonnement de 14,99 € par mois n’est pas payé. Vous le payez et le résiliez vous-même, de votre côté."
       : ESSAI_BANNER_DEFAULT;
     if (b) b.textContent = a ? "Payer 14,99 € par mois" : "Souscrire";
   }
@@ -5692,8 +5680,7 @@
   function roleLabel(r) {
     if (!r) return "";
     if (r.role === "assoc") {
-      if ((Number(r.paidUntil) || 0) > Date.now()) return "Associé(e) · abonnement actif jusqu’au " + formatDateFr(toISODate(new Date(r.paidUntil)))
-        + (r.payBy === "admin" ? " · payé par l’administrateur" : r.payBy === "self" ? " · payé par l’associé(e)" : "");
+      if ((Number(r.paidUntil) || 0) > Date.now()) return "Associé(e) · abonnement actif jusqu’au " + formatDateFr(toISODate(new Date(r.paidUntil)));
       if (Date.now() < cabTrialEnd()) return "Associé(e) · essai du cabinet jusqu’au " + formatDateFr(toISODate(new Date(cabTrialEnd()))) + ", puis 14,99 € par mois";
       return r.paidUntil > 0 ? "Associé(e) · abonnement terminé" : "Associé(e) · paiement en attente";
     }
@@ -5758,7 +5745,7 @@
       txt.textContent = "L’administrateur du cabinet n’a pas validé votre accès comme remplaçant(e). Rapprochez-vous de lui.";
     } else if (g === "ended") {
       ttl.textContent = "Votre abonnement d’associé est terminé";
-      txt.textContent = "Votre accès au cabinet est fermé. Le cabinet n’est pas touché. Pour continuer : 14,99 € par mois, avec votre propre abonnement. L’administrateur du cabinet peut payer pour vous, et vous pouvez payer aussi, de votre côté, indépendamment.";
+      txt.textContent = "Votre accès au cabinet est fermé. Le cabinet n’est pas touché. Pour continuer : 14,99 € par mois, avec votre propre abonnement, que vous payez et résiliez vous-même, de votre côté.";
     } else {
       ttl.textContent = "Abonnement d’associé";
       txt.textContent = (r.inv
@@ -5767,14 +5754,14 @@
           ? "L’administrateur du cabinet vous a passé(e) associé(e). "
           : "Vous rejoignez le cabinet comme associé(e). ")
         + (cabTrialEnd() && Date.now() >= cabTrialEnd() ? "L’essai de 14 jours du cabinet est terminé. " : "")
-        + "Votre accès coûte 14,99 € par mois, avec votre propre abonnement, séparé de celui du cabinet et payé chaque mois. L’administrateur du cabinet peut payer pour vous, et vous pouvez payer aussi, de votre côté, indépendamment. L’accès s’ouvre dès que Stripe confirme le paiement. La résiliation se fait en ligne, sur vydel.fr/resilier.html, par la personne qui a payé.";
+        + "Votre accès coûte 14,99 € par mois, avec votre propre abonnement, séparé de celui du cabinet et payé chaque mois. Vous le payez et le résiliez vous-même, de votre côté. L’accès s’ouvre dès que Stripe confirme le paiement. Résiliation en ligne : Menu → « Gérer / résilier mon abonnement ».";
     }
     if (pay) pay.hidden = !(g === "pay" || g === "ended");
     if ($("btn-role-check")) $("btn-role-check").textContent = (g === "pay" || g === "ended") ? "Déjà payé ? Vérifier" : "Vérifier";
   }
   /* Place d’associé sur le serveur (créée une fois, partagée dans l’état chiffré du cabinet). */
-  async function seatEnsure(name) {
-    var who = name || localDisplayName();
+  async function seatEnsure() {
+    var who = localDisplayName();
     var r = roleOf(who);
     if (!r || r.role !== "assoc" || !essaiActive()) throw new Error("role");
     if (r.mid) return r.mid;
@@ -5799,41 +5786,32 @@
       var j = await essaiPost("/seat/status", { tid: state.trial.tid, tok: state.trial.tok, mid: r.mid });
       if (!j || !j.ok || j.mid !== r.mid) continue;
       var pu = Number(j.paidUntil) || 0;
-      var pb = j.by === "admin" || j.by === "self" ? j.by : "";
-      if (pu !== (Number(r.paidUntil) || 0) || String(j.sub || "") !== r.sub || pb !== (r.payBy || "")) { r.paidUntil = pu; r.sub = String(j.sub || ""); r.payBy = pb; r.su = Date.now(); changed = true; }
+      if (pu !== (Number(r.paidUntil) || 0) || String(j.sub || "") !== r.sub) { r.paidUntil = pu; r.sub = String(j.sub || ""); r.su = Date.now(); changed = true; }
     }
     if (changed) { persist(true); applyAccessGate(); renderEssai(); try { renderStaff(); } catch (e) {} }
   }
-  /* name : associé pour qui l’administrateur paie (sinon : soi-même). Une place déjà payée ne se repaie pas (409 du serveur). */
-  async function seatCheckout(name) {
-    var forOther = typeof name === "string" && name && foldName(name) !== foldName(localDisplayName());
-    var err = forOther ? null : $("role-error"), btn = forOther ? null : $("btn-role-pay");
+  /* L’associé paie lui-même son abonnement (1.99.15). Un abonnement déjà payé ne se repaie pas (409 du serveur). */
+  async function seatCheckout() {
+    var err = $("role-error"), btn = $("btn-role-pay");
     if (err) err.hidden = true;
     if (btn) btn.disabled = true;
     try {
-      var mid = await seatEnsure(forOther ? name : "");
-      var j = await essaiPost("/seat/checkout", { tid: state.trial.tid, tok: state.trial.tok, mid: mid, by: forOther ? "admin" : "self", ret: location.origin + location.pathname });
+      var mid = await seatEnsure();
+      var j = await essaiPost("/seat/checkout", { tid: state.trial.tid, tok: state.trial.tok, mid: mid, ret: location.origin + location.pathname });
       if (j && j.why === "paid") {
         await seatSync().catch(function () {});
-        var m = "Cet abonnement d’associé est déjà payé" + (j.by === "admin" ? " par l’administrateur" : j.by === "self" ? " par l’associé(e)" : "") + " : pas de second paiement.";
-        if (err) { err.hidden = false; err.textContent = m; } else toast(m);
+        var m = "Votre abonnement d’associé est déjà payé : pas de second paiement.";
+        if (err && !$("modal-role").hidden) { err.hidden = false; err.textContent = m; } else toast(m);
         applyAccessGate();
         return;
       }
       if (!j.ok || !j.url) throw new Error("checkout");
       try { sessionStorage.setItem(SS_ABO_WAIT, String(Date.now())); localStorage.setItem(SS_ABO_WAIT, String(Date.now())); } catch (e) {}
-      seatWaitSet(forOther ? mid : "");
       location.assign(j.url);
     } catch (e2) {
       var m2 = "Paiement indisponible pour l’instant. Vérifiez la connexion et réessayez.";
-      if (err) { err.hidden = false; err.textContent = m2; } else toast(m2);
+      if (err && !$("modal-role").hidden) { err.hidden = false; err.textContent = m2; } else toast(m2);
     } finally { if (btn) btn.disabled = false; }
-  }
-  function payForAssoc(name) {
-    if (!isAdmin() || isKicked()) { toast("Réservé à un administrateur."); return; }
-    askConfirm("Payer pour " + name + " ?", "14,99 € par mois, avec un abonnement séparé de celui du cabinet, à votre nom (l’adresse e-mail que vous donnez au paiement). Vous pouvez payer pour l’associé(e), et l’associé(e) peut payer aussi, de son côté, indépendamment ; un abonnement déjà payé ne vous est pas proposé une seconde fois. La résiliation se fait sur vydel.fr/resilier.html, par la personne qui a payé.", function () {
-      seatCheckout(name);
-    });
   }
   /* Administrateur : valider, refuser, passer associé / remplaçant. */
   function setRole(name, patch) {
@@ -5857,7 +5835,7 @@
     askConfirm("Passer " + name + " associé(e) ?", (Date.now() < cabTrialEnd()
       ? "Pendant l’essai de 14 jours du cabinet, son accès reste ouvert. Ensuite, son abonnement d’associé est demandé : 14,99 € par mois, en plus de celui du cabinet."
       : "Son accès sera fermé jusqu’à ce que son abonnement d’associé soit payé : 14,99 € par mois, en plus de celui du cabinet.")
-      + " Vous pouvez payer pour l’associé(e), et l’associé(e) peut payer aussi, de son côté, indépendamment.", function () {
+      + " " + "Chaque associé paie et résilie lui-même son abonnement, de son côté.", function () {
       if (setRole(name, { role: "assoc", st: "pay" })) toast(name + " passe associé(e) : le paiement lui est demandé.");
     });
   }
@@ -5888,8 +5866,6 @@
         if (r.role === "remp" && r.st !== "ok") b("Valider (remplaçant)", "btn-primary", function () { validateRemp(r.name); });
         if (r.role === "remp") b("Passer associé — 14,99 €/mois", "btn-ghost", function () { toAssoc(r.name); });
         if (r.role === "remp" && r.st === "wait") b("Refuser", "btn-ghost", function () { setRole(r.name, { st: "no" }); });
-        if (r.role === "assoc" && !((Number(r.paidUntil) || 0) > Date.now())) b("Payer pour cet associé — 14,99 €/mois", "btn-primary", function () { payForAssoc(r.name); });
-        if (r.role === "assoc" && (Number(r.paidUntil) || 0) > Date.now() && r.payBy === "admin") b("Gérer / résilier (payé par vous)", "btn-ghost", function () { window.open(RESILIER_URL, "_blank", "noopener"); });
         if (r.role === "assoc" && !((Number(r.paidUntil) || 0) > Date.now())) b("Passer remplaçant", "btn-ghost", function () { toRemp(r.name); });
         row.appendChild(acts);
       }
@@ -7204,13 +7180,12 @@
           mid: /^[0-9a-f]{32}$/.test(String(r.mid || "")) ? String(r.mid) : "", paidUntil: Number(r.paidUntil) || 0, sub: String(r.sub || "").slice(0, 20)
         };
         if (r.inv) c.inv = 1;
-        c.payBy = r.payBy === "admin" || r.payBy === "self" ? r.payBy : "";
         c.su = Number(r.su) || 0; /* dernière lecture du serveur (paidUntil / sub) */
         var p = out[key];
         if (!p) { out[key] = c; return; }
         var w = c.t >= p.t ? c : p, o = w === c ? p : c;
         if (!w.mid && o.mid) w.mid = o.mid;
-        if (w.mid && w.mid === o.mid && o.su > w.su) { w.paidUntil = o.paidUntil; w.sub = o.sub; w.payBy = o.payBy; w.su = o.su; }
+        if (w.mid && w.mid === o.mid && o.su > w.su) { w.paidUntil = o.paidUntil; w.sub = o.sub; w.su = o.su; }
         out[key] = w;
       });
     }
@@ -8577,7 +8552,7 @@
     navigator.serviceWorker.getRegistrations().then(function (regs) {
       return Promise.all(regs.map(function (r) { return r.update(); }));
     }).then(function () {
-      return navigator.serviceWorker.register("./sw.js?v=1.99.14-app", { updateViaCache: "none" });
+      return navigator.serviceWorker.register("./sw.js?v=1.99.15-app", { updateViaCache: "none" });
     }).catch(function () {});
   }
 

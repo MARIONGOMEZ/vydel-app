@@ -5424,7 +5424,7 @@
       try { sessionStorage.removeItem(SS_ESSAI_INV); } catch (e3) {}
       return { ok: true, trial: essaiTrialFromServer(j) };
     }
-    if (j.httpStatus === 409) return { ok: false, err: "Un essai de Vydel a déjà été démarré sur ce téléphone. Pour continuer, rejoignez votre cabinet ou souscrivez depuis celui-ci." };
+    if (j.httpStatus === 409) return { ok: false, err: "Ce téléphone a déjà utilisé son essai gratuit de 14 jours : on ne peut pas en démarrer un deuxième en créant un autre cabinet. Ouvrez votre cabinet pour souscrire, ou rejoignez un cabinet avec une invitation." };
     if (j.httpStatus === 429) return { ok: false, err: "Trop d’essais démarrés depuis ce réseau aujourd’hui. Réessayez demain, ou depuis un autre réseau." };
     if (j.httpStatus === 410) return { ok: false, err: "Cette invitation a été annulée. Demandez un nouveau lien à la personne qui vous l’a envoyée." };
     return { ok: false, err: "Impossible de démarrer l’essai pour l’instant. Réessayez dans un instant." };
